@@ -37,8 +37,8 @@ class Config:
             'model_b': self.base_dir / 'model' / 'lgbm_B.pkl',
             'output_dir': self.base_dir / 'output',
             'output': self.base_dir / 'output' / 'submission.csv',
-            'log_dir': self.base_dir / 'src',
-            'result_log': self.base_dir / 'src' / 'experiment_results.txt'
+            'log_dir': self.base_dir / 'output',
+            'result_log': self.base_dir / 'output' / 'experiment_results.txt'
         }
         
         # Inference parameters
