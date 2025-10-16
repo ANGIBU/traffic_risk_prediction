@@ -1,5 +1,5 @@
 # src/utils.py
-# Common utility functions23
+# Common utility functions
 
 import logging
 import sys
