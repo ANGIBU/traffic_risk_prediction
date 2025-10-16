@@ -1,17 +1,25 @@
-# 모든 파일 기본 제외
-*
-
-# 허용할 파일만 추가
-!*.py
-!requirements.txt
-!README.md
-
-# .gitignore 파일은 항상 포함
-!.gitignore
-# VSCode 설정 및 확장 파일 제외
+# VSCode settings
 .vscode/
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Logs
 logs/
-models/
+
+# Model files
+model/
+
+# Output files
 output/
+
+# Data files
+data/
+data_dev/
+
+# OS files
+.DS_Store
+Thumbs.db
