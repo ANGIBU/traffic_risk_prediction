@@ -67,33 +67,10 @@ traffic_risk_prediction/
 
 ---
 
-## 설치 방법
-
-### 1. 저장소 클론
-```bash
-git clone https://github.com/your-username/traffic_risk_prediction.git
-cd traffic_risk_prediction
-```
-
-### 2. 패키지 설치
-```bash
-pip install -r requirements.txt
-```
-
-### 필수 패키지
-- Python 3.10+
-- lightgbm==4.6.0
-- pandas==2.0.3
-- numpy==1.24.3
-- scikit-learn==1.3.0
-- joblib==1.3.2
-
----
-
 ## 사용 방법
 
 ### 1. 데이터 준비
-다음 구조로 데이터를 준비합니다:
+다음 구조로 데이터를 준비:
 ```
 data/
 ├── test.csv          # 테스트 메타데이터
