@@ -20,13 +20,12 @@ class Config:
         Args:
             base_dir: Base directory path (defaults to parent of src/)
         """
-        # Base paths
         if base_dir is None:
             self.base_dir = Path(__file__).parent.parent
         else:
             self.base_dir = Path(base_dir)
         
-        # Data paths - adjusted for evaluation server structure
+        # Data paths
         self.paths = {
             'data_dir': self.base_dir / 'data',
             'test': self.base_dir / 'data' / 'test.csv',
@@ -54,6 +53,14 @@ class Config:
             'eps': 1e-6
         }
         
+        # Feature engineering settings
+        self.feature_engineering = {
+            'use_temporal': True,
+            'use_cross_test': True,
+            'use_interaction': True,
+            'use_nonlinear': True
+        }
+        
         # Logging
         self.logging = {
             'level': 'INFO',
@@ -71,15 +78,12 @@ class Config:
             FileNotFoundError: If required files do not exist
             ValueError: If configuration values are invalid
         """
-        # Check test file exists
         if not self.paths['test'].exists():
             raise FileNotFoundError(f"Test file not found: {self.paths['test']}")
         
-        # Check model directory exists
         if not self.paths['model_dir'].exists():
             raise FileNotFoundError(f"Model directory not found: {self.paths['model_dir']}")
         
-        # Validate inference parameters
         if self.inference['batch_size'] <= 0:
             raise ValueError("batch_size must be positive")
         
