@@ -36,7 +36,9 @@ class Config:
             'model': self.base_dir / 'model' / 'lgbm_A.pkl',
             'model_b': self.base_dir / 'model' / 'lgbm_B.pkl',
             'output_dir': self.base_dir / 'output',
-            'output': self.base_dir / 'output' / 'submission.csv'
+            'output': self.base_dir / 'output' / 'submission.csv',
+            'log_dir': self.base_dir / 'src',
+            'result_log': self.base_dir / 'src' / 'experiment_results.txt'
         }
         
         # Inference parameters
@@ -99,3 +101,7 @@ class Config:
     def ensure_output_dir(self) -> None:
         """Create output directory if it does not exist."""
         self.paths['output_dir'].mkdir(parents=True, exist_ok=True)
+    
+    def ensure_log_dir(self) -> None:
+        """Create log directory if it does not exist."""
+        self.paths['log_dir'].mkdir(parents=True, exist_ok=True)

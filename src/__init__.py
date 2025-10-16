@@ -9,11 +9,13 @@ from .data_loader import DataLoader
 from .preprocessor import Preprocessor
 from .features import FeatureEngineer
 from .predictor import Predictor
+from .logger import ResultLogger
 
 __all__ = [
     'Config',
     'DataLoader',
     'Preprocessor',
     'FeatureEngineer',
-    'Predictor'
+    'Predictor',
+    'ResultLogger'
 ]
