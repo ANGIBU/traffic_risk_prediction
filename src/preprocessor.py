@@ -4,7 +4,7 @@
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, Tuple
+from typing import Dict, Tuple                                                    
 from .utils import (
     convert_age, split_testdate, seq_mean, seq_std, seq_rate,
     masked_mean_from_csv_series, masked_mean_in_set_series
