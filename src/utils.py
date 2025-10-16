@@ -119,7 +119,9 @@ def seq_mean(series):
     Returns:
         pd.Series: Mean values
     """
-    return series.fillna("").apply(
+    # Convert to string to handle categorical type
+    series_str = series.astype(str)
+    return series_str.replace('nan', '').apply(
         lambda x: np.fromstring(x, sep=",").mean() if x else np.nan
     )
 
@@ -133,7 +135,9 @@ def seq_std(series):
     Returns:
         pd.Series: Standard deviation values
     """
-    return series.fillna("").apply(
+    # Convert to string to handle categorical type
+    series_str = series.astype(str)
+    return series_str.replace('nan', '').apply(
         lambda x: np.fromstring(x, sep=",").std() if x else np.nan
     )
 
@@ -148,7 +152,9 @@ def seq_rate(series, target="1"):
     Returns:
         pd.Series: Rate values
     """
-    return series.fillna("").apply(
+    # Convert to string to handle categorical type
+    series_str = series.astype(str)
+    return series_str.replace('nan', '').apply(
         lambda x: str(x).split(",").count(target) / len(x.split(",")) if x else np.nan
     )
 
@@ -164,8 +170,12 @@ def masked_mean_from_csv_series(cond_series, val_series, mask_val):
     Returns:
         pd.Series: Masked mean values
     """
-    cond_df = cond_series.fillna("").str.split(",", expand=True).replace("", np.nan)
-    val_df = val_series.fillna("").str.split(",", expand=True).replace("", np.nan)
+    # Convert to string to handle categorical type
+    cond_str = cond_series.astype(str).replace('nan', '')
+    val_str = val_series.astype(str).replace('nan', '')
+    
+    cond_df = cond_str.str.split(",", expand=True).replace("", np.nan)
+    val_df = val_str.str.split(",", expand=True).replace("", np.nan)
     cond_arr = cond_df.to_numpy(dtype=float)
     val_arr = val_df.to_numpy(dtype=float)
     mask = (cond_arr == mask_val)
@@ -187,8 +197,12 @@ def masked_mean_in_set_series(cond_series, val_series, mask_set):
     Returns:
         pd.Series: Masked mean values
     """
-    cond_df = cond_series.fillna("").str.split(",", expand=True).replace("", np.nan)
-    val_df = val_series.fillna("").str.split(",", expand=True).replace("", np.nan)
+    # Convert to string to handle categorical type
+    cond_str = cond_series.astype(str).replace('nan', '')
+    val_str = val_series.astype(str).replace('nan', '')
+    
+    cond_df = cond_str.str.split(",", expand=True).replace("", np.nan)
+    val_df = val_str.str.split(",", expand=True).replace("", np.nan)
     cond_arr = cond_df.to_numpy(dtype=float)
     val_arr = val_df.to_numpy(dtype=float)
     mask = np.isin(cond_arr, list(mask_set))
