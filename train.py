@@ -14,6 +14,7 @@ warnings.filterwarnings('ignore')
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.feature_selection import SelectFromModel
+from sklearn.isotonic import IsotonicRegression
 import lightgbm as lgb
 
 sys.path.append(str(Path(__file__).parent))
