@@ -207,7 +207,13 @@ class Predictor:
             batch = X.iloc[i:end_idx]
             
             # Predict probabilities
-            batch_pred = model.predict(batch, num_iteration=model.best_iteration)
+            # LGBMClassifier uses predict_proba method
+            if hasattr(model, 'predict_proba'):
+                batch_pred = model.predict_proba(batch)[:, 1]
+            else:
+                # Booster API uses predict
+                batch_pred = model.predict(batch)
+            
             predictions[i:end_idx] = batch_pred
             
             if (i // batch_size + 1) % 5 == 0:
