@@ -12,7 +12,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, brier_score_loss
+from sklearn.feature_selection import SelectFromModel
 import lightgbm as lgb
 
 sys.path.append(str(Path(__file__).parent))
@@ -22,6 +23,56 @@ from src.data_loader import DataLoader
 from src.preprocessor import Preprocessor
 from src.features import FeatureEngineer
 from src.utils import setup_logging
+
+def calculate_ece(y_true, y_pred, n_bins=10):
+    """
+    Calculate Expected Calibration Error.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted probabilities
+        n_bins: Number of bins
+        
+    Returns:
+        float: ECE score
+    """
+    bins = np.linspace(0, 1, n_bins + 1)
+    bin_indices = np.digitize(y_pred, bins[:-1]) - 1
+    bin_indices = np.clip(bin_indices, 0, n_bins - 1)
+    
+    ece = 0.0
+    for i in range(n_bins):
+        mask = bin_indices == i
+        if mask.sum() > 0:
+            bin_acc = y_true[mask].mean()
+            bin_conf = y_pred[mask].mean()
+            bin_weight = mask.sum() / len(y_true)
+            ece += bin_weight * abs(bin_acc - bin_conf)
+    
+    return ece
+
+def calculate_combined_score(y_true, y_pred):
+    """
+    Calculate combined score: 0.5*(1-AUC) + 0.25*Brier + 0.25*ECE.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted probabilities
+        
+    Returns:
+        dict: Metric scores
+    """
+    auc = roc_auc_score(y_true, y_pred)
+    brier = brier_score_loss(y_true, y_pred)
+    ece = calculate_ece(y_true, y_pred)
+    combined = 0.5 * (1 - auc) + 0.25 * brier + 0.25 * ece
+    
+    return {
+        'auc': auc,
+        'brier': brier,
+        'ece': ece,
+        'combined': combined
+    }
 
 def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
     """
@@ -48,13 +99,64 @@ def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
         valid_names=['train', 'valid'],
         callbacks=[
             lgb.log_evaluation(period=50),
-            lgb.early_stopping(stopping_rounds=100, verbose=True)
+            lgb.early_stopping(stopping_rounds=50, verbose=True)
         ]
     )
     
     return model
 
-def cross_validate(X, y, params, n_splits=5, test_type='A'):
+def select_features(X, y, params, threshold=0.95):
+    """
+    Select important features using feature importance.
+    
+    Args:
+        X: Feature matrix
+        y: Labels
+        params: Model parameters
+        threshold: Cumulative importance threshold
+        
+    Returns:
+        list: Selected feature names
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting feature selection (threshold={threshold})")
+    
+    # Train a model for feature selection
+    train_data = lgb.Dataset(X, label=y)
+    model = lgb.train(
+        params,
+        train_data,
+        num_boost_round=200,
+        callbacks=[lgb.log_evaluation(period=0)]
+    )
+    
+    # Get feature importance
+    importance = model.feature_importance(importance_type='gain')
+    feature_names = X.columns.tolist()
+    
+    # Sort by importance
+    feat_imp = pd.DataFrame({
+        'feature': feature_names,
+        'importance': importance
+    }).sort_values('importance', ascending=False)
+    
+    # Calculate cumulative importance
+    feat_imp['cumulative'] = feat_imp['importance'].cumsum() / feat_imp['importance'].sum()
+    
+    # Select features up to threshold
+    selected = feat_imp[feat_imp['cumulative'] <= threshold]['feature'].tolist()
+    
+    # Ensure at least 30 features or 50% of original
+    min_features = max(30, int(len(feature_names) * 0.5))
+    if len(selected) < min_features:
+        selected = feat_imp.head(min_features)['feature'].tolist()
+    
+    logger.info(f"Selected {len(selected)} features from {len(feature_names)}")
+    logger.info(f"Cumulative importance: {feat_imp.iloc[len(selected)-1]['cumulative']:.3f}")
+    
+    return selected
+
+def cross_validate(X, y, params, config, test_type='A'):
     """
     Perform stratified k-fold cross-validation.
     
@@ -62,20 +164,32 @@ def cross_validate(X, y, params, n_splits=5, test_type='A'):
         X: Features
         y: Labels
         params: Model hyperparameters
-        n_splits: Number of folds
+        config: Configuration object
         test_type: 'A' or 'B'
         
     Returns:
-        tuple: (best_model, cv_scores, oof_predictions)
+        tuple: (best_model, cv_scores, oof_predictions, selected_features)
     """
+    n_splits = config.training['n_splits']
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-    
-    cv_scores = []
-    oof_preds = np.zeros(len(X))
-    models = []
     
     logger = logging.getLogger(__name__)
     logger.info(f"Starting {n_splits}-fold CV for type {test_type}")
+    
+    # Feature selection on full dataset
+    if config.training['use_feature_selection']:
+        selected_features = select_features(
+            X, y, params, 
+            threshold=config.training['feature_selection_threshold']
+        )
+        X = X[selected_features]
+        logger.info(f"Using {len(selected_features)} selected features")
+    else:
+        selected_features = X.columns.tolist()
+    
+    cv_metrics = []
+    oof_preds = np.zeros(len(X))
+    models = []
     
     for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), 1):
         logger.info(f"Fold {fold}/{n_splits}")
@@ -92,19 +206,34 @@ def cross_validate(X, y, params, n_splits=5, test_type='A'):
         val_pred = model.predict(X_val, num_iteration=model.best_iteration)
         oof_preds[val_idx] = val_pred
         
-        fold_auc = roc_auc_score(y_val, val_pred)
-        cv_scores.append(fold_auc)
-        logger.info(f"Fold {fold} AUC: {fold_auc:.6f}")
+        fold_metrics = calculate_combined_score(y_val, val_pred)
+        cv_metrics.append(fold_metrics)
+        
+        logger.info(f"Fold {fold} - AUC: {fold_metrics['auc']:.6f}, "
+                   f"Brier: {fold_metrics['brier']:.6f}, "
+                   f"ECE: {fold_metrics['ece']:.6f}, "
+                   f"Combined: {fold_metrics['combined']:.6f}")
     
-    oof_auc = roc_auc_score(y, oof_preds)
-    logger.info(f"Overall OOF AUC: {oof_auc:.6f}")
-    logger.info(f"CV AUC: {np.mean(cv_scores):.6f} +/- {np.std(cv_scores):.6f}")
+    oof_metrics = calculate_combined_score(y, oof_preds)
+    logger.info(f"Overall OOF - AUC: {oof_metrics['auc']:.6f}, "
+               f"Brier: {oof_metrics['brier']:.6f}, "
+               f"ECE: {oof_metrics['ece']:.6f}, "
+               f"Combined: {oof_metrics['combined']:.6f}")
     
-    best_fold_idx = np.argmax(cv_scores)
+    # Calculate mean and std of CV metrics
+    metrics_df = pd.DataFrame(cv_metrics)
+    for metric in ['auc', 'brier', 'ece', 'combined']:
+        mean = metrics_df[metric].mean()
+        std = metrics_df[metric].std()
+        logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
+    
+    # Select best model based on combined score
+    best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
     best_model = models[best_fold_idx]
-    logger.info(f"Best model from fold {best_fold_idx + 1} (AUC: {cv_scores[best_fold_idx]:.6f})")
+    logger.info(f"Best model from fold {best_fold_idx + 1} "
+               f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
-    return best_model, cv_scores, oof_preds
+    return best_model, cv_metrics, oof_preds, selected_features
 
 def prepare_features(df, test_type='A'):
     """
@@ -125,6 +254,18 @@ def prepare_features(df, test_type='A'):
     
     return X
 
+def save_feature_names(feature_names, path):
+    """
+    Save feature names to file.
+    
+    Args:
+        feature_names: List of feature names
+        path: File path
+    """
+    with open(path, 'w') as f:
+        for name in feature_names:
+            f.write(f"{name}\n")
+
 def main():
     """
     Main training execution pipeline.
@@ -134,7 +275,7 @@ def main():
         2. Preprocess by test type
         3. Generate features
         4. Train with cross-validation
-        5. Save models
+        5. Save models and feature names
     """
     start_time = time.time()
     
@@ -199,18 +340,22 @@ def main():
         X_a = prepare_features(featured_a, 'A')
         y_a = featured_a['Label'].astype(int)
         logger.info(f"Features A: {X_a.shape}")
-        logger.info(f"Feature names: {len(X_a.columns)}")
+        logger.info(f"Initial feature count: {len(X_a.columns)}")
         
-        model_a, cv_scores_a, oof_preds_a = cross_validate(
+        model_a, cv_metrics_a, oof_preds_a, selected_features_a = cross_validate(
             X_a, y_a, 
             config.lgbm_params_a,
-            n_splits=config.training['n_splits'],
+            config,
             test_type='A'
         )
         
         model_path_a = config.paths['model']
         joblib.dump(model_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
+        
+        feature_names_path_a = config.paths['feature_names_a']
+        save_feature_names(selected_features_a, feature_names_path_a)
+        logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
         logger.info("STEP 5: Training Type B model")
@@ -219,12 +364,12 @@ def main():
         X_b = prepare_features(featured_b, 'B')
         y_b = featured_b['Label'].astype(int)
         logger.info(f"Features B: {X_b.shape}")
-        logger.info(f"Feature names: {len(X_b.columns)}")
+        logger.info(f"Initial feature count: {len(X_b.columns)}")
         
-        model_b, cv_scores_b, oof_preds_b = cross_validate(
+        model_b, cv_metrics_b, oof_preds_b, selected_features_b = cross_validate(
             X_b, y_b,
             config.lgbm_params_b,
-            n_splits=config.training['n_splits'],
+            config,
             test_type='B'
         )
         
@@ -232,32 +377,43 @@ def main():
         joblib.dump(model_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
         
+        feature_names_path_b = config.paths['feature_names_b']
+        save_feature_names(selected_features_b, feature_names_path_b)
+        logger.info(f"Feature names B saved to {feature_names_path_b}")
+        
         logger.info("="*60)
         logger.info("TRAINING COMPLETE")
         logger.info("="*60)
-        logger.info(f"Type A - CV AUC: {np.mean(cv_scores_a):.6f} +/- {np.std(cv_scores_a):.6f}")
-        logger.info(f"Type B - CV AUC: {np.mean(cv_scores_b):.6f} +/- {np.std(cv_scores_b):.6f}")
+        
+        # Calculate mean metrics
+        metrics_df_a = pd.DataFrame(cv_metrics_a)
+        metrics_df_b = pd.DataFrame(cv_metrics_b)
+        
+        logger.info(f"Type A - Combined Score: {metrics_df_a['combined'].mean():.6f} +/- {metrics_df_a['combined'].std():.6f}")
+        logger.info(f"Type A - AUC: {metrics_df_a['auc'].mean():.6f} +/- {metrics_df_a['auc'].std():.6f}")
+        logger.info(f"Type B - Combined Score: {metrics_df_b['combined'].mean():.6f} +/- {metrics_df_b['combined'].std():.6f}")
+        logger.info(f"Type B - AUC: {metrics_df_b['auc'].mean():.6f} +/- {metrics_df_b['auc'].std():.6f}")
         
         total_time = time.time() - start_time
         logger.info(f"Total training time: {total_time:.1f}s ({total_time/60:.1f}min)")
         logger.info("="*60)
         
         feature_importance_a = pd.DataFrame({
-            'feature': X_a.columns,
+            'feature': selected_features_a,
             'importance': model_a.feature_importance(importance_type='gain')
         }).sort_values('importance', ascending=False)
         
         feature_importance_b = pd.DataFrame({
-            'feature': X_b.columns,
+            'feature': selected_features_b,
             'importance': model_b.feature_importance(importance_type='gain')
         }).sort_values('importance', ascending=False)
         
-        logger.info("Top 10 features for Type A:")
-        for idx, row in feature_importance_a.head(10).iterrows():
+        logger.info("Top 15 features for Type A:")
+        for idx, row in feature_importance_a.head(15).iterrows():
             logger.info(f"  {row['feature']}: {row['importance']:.1f}")
         
-        logger.info("Top 10 features for Type B:")
-        for idx, row in feature_importance_b.head(10).iterrows():
+        logger.info("Top 15 features for Type B:")
+        for idx, row in feature_importance_b.head(15).iterrows():
             logger.info(f"  {row['feature']}: {row['importance']:.1f}")
         
         config.ensure_output_dir()

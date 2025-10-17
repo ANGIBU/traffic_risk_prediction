@@ -40,6 +40,8 @@ class Config:
             'model_dir': self.base_dir / 'model',
             'model': self.base_dir / 'model' / 'lgbm_A.pkl',
             'model_b': self.base_dir / 'model' / 'lgbm_B.pkl',
+            'feature_names_a': self.base_dir / 'model' / 'feature_names_A.txt',
+            'feature_names_b': self.base_dir / 'model' / 'feature_names_B.txt',
             'output_dir': self.base_dir / 'output',
             'output': self.base_dir / 'output' / 'submission.csv',
             'log_dir': self.base_dir / 'output',
@@ -73,7 +75,9 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 100
+            'early_stopping_rounds': 50,
+            'use_feature_selection': True,
+            'feature_selection_threshold': 0.95
         }
         
         # LightGBM hyperparameters for Type A
@@ -81,21 +85,24 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 63,
-            'max_depth': 8,
-            'min_child_samples': 10,
-            'learning_rate': 0.03,
-            'n_estimators': 500,
+            'num_leaves': 31,
+            'max_depth': 6,
+            'min_child_samples': 20,
+            'min_child_weight': 0.001,
+            'learning_rate': 0.05,
+            'n_estimators': 1000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 33.6,
-            'is_unbalance': True,
-            'reg_alpha': 0.1,
-            'reg_lambda': 0.1,
+            'scale_pos_weight': 35.0,
+            'is_unbalance': False,
+            'reg_alpha': 0.3,
+            'reg_lambda': 0.3,
+            'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,
-            'random_state': 42
+            'random_state': 42,
+            'importance_type': 'gain'
         }
         
         # LightGBM hyperparameters for Type B
@@ -103,21 +110,24 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 63,
-            'max_depth': 8,
-            'min_child_samples': 10,
-            'learning_rate': 0.03,
-            'n_estimators': 500,
+            'num_leaves': 31,
+            'max_depth': 6,
+            'min_child_samples': 20,
+            'min_child_weight': 0.001,
+            'learning_rate': 0.05,
+            'n_estimators': 1000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 33.6,
-            'is_unbalance': True,
-            'reg_alpha': 0.1,
-            'reg_lambda': 0.1,
+            'scale_pos_weight': 35.0,
+            'is_unbalance': False,
+            'reg_alpha': 0.3,
+            'reg_lambda': 0.3,
+            'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,
-            'random_state': 42
+            'random_state': 42,
+            'importance_type': 'gain'
         }
         
         # Logging

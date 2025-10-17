@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import lightgbm as lgb
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,9 @@ class Predictor:
         # Drop columns that should not be used as features
         self.drop_cols = ["Test_id", "Test", "PrimaryKey", "Age", "TestDate"]
         
-        # Load models
+        # Load models and feature names
         self._load_models()
+        self._load_feature_names()
     
     def _load_models(self) -> None:
         """Load trained models from disk."""
@@ -48,11 +49,6 @@ class Predictor:
         if model_a_path.exists():
             logger.info(f"Loading model A from {model_a_path}")
             self.model_a = joblib.load(model_a_path)
-            
-            if hasattr(self.model_a, 'feature_name_'):
-                self.feature_names_a = list(self.model_a.feature_name_)
-                logger.info(f"Model A expects {len(self.feature_names_a)} features")
-            
             logger.info("Model A loaded successfully")
         else:
             logger.warning(f"Model A not found at {model_a_path}")
@@ -61,14 +57,38 @@ class Predictor:
         if model_b_path.exists():
             logger.info(f"Loading model B from {model_b_path}")
             self.model_b = joblib.load(model_b_path)
-            
-            if hasattr(self.model_b, 'feature_name_'):
-                self.feature_names_b = list(self.model_b.feature_name_)
-                logger.info(f"Model B expects {len(self.feature_names_b)} features")
-            
             logger.info("Model B loaded successfully")
         else:
             logger.warning(f"Model B not found at {model_b_path}")
+    
+    def _load_feature_names(self) -> None:
+        """Load feature names from disk."""
+        feature_names_a_path = self.config.paths.get('feature_names_a')
+        feature_names_b_path = self.config.paths.get('feature_names_b')
+        
+        # Load feature names for model A
+        if feature_names_a_path and feature_names_a_path.exists():
+            logger.info(f"Loading feature names A from {feature_names_a_path}")
+            with open(feature_names_a_path, 'r') as f:
+                self.feature_names_a = [line.strip() for line in f if line.strip()]
+            logger.info(f"Model A expects {len(self.feature_names_a)} features")
+        elif self.model_a and hasattr(self.model_a, 'feature_name_'):
+            self.feature_names_a = list(self.model_a.feature_name_)
+            logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
+        else:
+            logger.warning("Feature names A not found")
+        
+        # Load feature names for model B
+        if feature_names_b_path and feature_names_b_path.exists():
+            logger.info(f"Loading feature names B from {feature_names_b_path}")
+            with open(feature_names_b_path, 'r') as f:
+                self.feature_names_b = [line.strip() for line in f if line.strip()]
+            logger.info(f"Model B expects {len(self.feature_names_b)} features")
+        elif self.model_b and hasattr(self.model_b, 'feature_name_'):
+            self.feature_names_b = list(self.model_b.feature_name_)
+            logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
+        else:
+            logger.warning("Feature names B not found")
     
     def predict(self, df_a: pd.DataFrame, df_b: pd.DataFrame) -> Dict[str, np.ndarray]:
         """
@@ -86,7 +106,7 @@ class Predictor:
         # Predict for type A
         if len(df_a) > 0 and self.model_a is not None:
             logger.info(f"Predicting for {len(df_a)} type A samples")
-            X_a = self._align_to_model(df_a, self.model_a, self.feature_names_a)
+            X_a = self._align_to_model(df_a, self.model_a, self.feature_names_a, 'A')
             pred_a = self._batch_predict(self.model_a, X_a)
             predictions['A'] = pred_a
             logger.info(f"Type A predictions: mean={pred_a.mean():.4f}, std={pred_a.std():.4f}")
@@ -96,7 +116,7 @@ class Predictor:
         # Predict for type B
         if len(df_b) > 0 and self.model_b is not None:
             logger.info(f"Predicting for {len(df_b)} type B samples")
-            X_b = self._align_to_model(df_b, self.model_b, self.feature_names_b)
+            X_b = self._align_to_model(df_b, self.model_b, self.feature_names_b, 'B')
             pred_b = self._batch_predict(self.model_b, X_b)
             predictions['B'] = pred_b
             logger.info(f"Type B predictions: mean={pred_b.mean():.4f}, std={pred_b.std():.4f}")
@@ -105,7 +125,7 @@ class Predictor:
         
         return predictions
     
-    def _align_to_model(self, df: pd.DataFrame, model, feature_names: Optional[list]) -> pd.DataFrame:
+    def _align_to_model(self, df: pd.DataFrame, model, feature_names: Optional[List[str]], test_type: str) -> pd.DataFrame:
         """
         Align features to model expectations.
         
@@ -113,6 +133,7 @@ class Predictor:
             df: DataFrame with features
             model: Trained model
             feature_names: Expected feature names
+            test_type: 'A' or 'B' for logging
             
         Returns:
             pd.DataFrame: Aligned feature matrix
@@ -121,20 +142,45 @@ class Predictor:
         X = df.drop(columns=[c for c in self.drop_cols if c in df.columns], errors="ignore").copy()
         
         if feature_names is None or len(feature_names) == 0:
-            # Fallback: use all numeric columns
+            logger.warning(f"No feature names provided for type {test_type}, using all numeric columns")
             X = X.select_dtypes(include=[np.number]).copy()
             return X.fillna(0.0)
         
+        logger.info(f"Type {test_type}: Aligning {len(X.columns)} generated features to {len(feature_names)} model features")
+        
+        # Check which features are missing and which are extra
+        generated_features = set(X.columns)
+        expected_features = set(feature_names)
+        
+        missing_features = expected_features - generated_features
+        extra_features = generated_features - expected_features
+        
+        if missing_features:
+            logger.warning(f"Type {test_type}: {len(missing_features)} features missing (will be filled with 0)")
+            logger.debug(f"Missing features: {sorted(list(missing_features))[:10]}...")
+        
+        if extra_features:
+            logger.info(f"Type {test_type}: {len(extra_features)} extra features (will be ignored)")
+        
         # Add missing features with zeros
-        for c in feature_names:
-            if c not in X.columns:
-                X[c] = 0.0
+        for feat in missing_features:
+            X[feat] = 0.0
         
         # Select and order features according to model
-        X = X[feature_names]
+        X = X[feature_names].copy()
         
         # Convert to numeric and fill NaN
-        X = X.apply(pd.to_numeric, errors='coerce').fillna(0.0)
+        for col in X.columns:
+            if X[col].dtype == 'object' or pd.api.types.is_categorical_dtype(X[col]):
+                X[col] = pd.to_numeric(X[col], errors='coerce')
+        
+        X = X.fillna(0.0)
+        
+        # Final validation
+        assert X.shape[1] == len(feature_names), f"Feature count mismatch: {X.shape[1]} vs {len(feature_names)}"
+        assert list(X.columns) == feature_names, "Feature order mismatch"
+        
+        logger.info(f"Type {test_type}: Feature alignment complete - {X.shape}")
         
         return X
     
@@ -161,7 +207,7 @@ class Predictor:
             batch = X.iloc[i:end_idx]
             
             # Predict probabilities
-            batch_pred = model.predict_proba(batch)[:, 1]
+            batch_pred = model.predict(batch, num_iteration=model.best_iteration)
             predictions[i:end_idx] = batch_pred
             
             if (i // batch_size + 1) % 5 == 0:
