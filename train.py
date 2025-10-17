@@ -1,5 +1,5 @@
 # train.py
-# Model training script with cross-validation
+# Model training script with cross-validation and calibration
 
 import sys
 import logging
@@ -122,7 +122,6 @@ def select_features(X, y, params, threshold=0.95):
     logger = logging.getLogger(__name__)
     logger.info(f"Starting feature selection (threshold={threshold})")
     
-    # Train a model for feature selection
     train_data = lgb.Dataset(X, label=y)
     model = lgb.train(
         params,
@@ -131,23 +130,18 @@ def select_features(X, y, params, threshold=0.95):
         callbacks=[lgb.log_evaluation(period=0)]
     )
     
-    # Get feature importance
     importance = model.feature_importance(importance_type='gain')
     feature_names = X.columns.tolist()
     
-    # Sort by importance
     feat_imp = pd.DataFrame({
         'feature': feature_names,
         'importance': importance
     }).sort_values('importance', ascending=False)
     
-    # Calculate cumulative importance
     feat_imp['cumulative'] = feat_imp['importance'].cumsum() / feat_imp['importance'].sum()
     
-    # Select features up to threshold
     selected = feat_imp[feat_imp['cumulative'] <= threshold]['feature'].tolist()
     
-    # Ensure at least 30 features or 50% of original
     min_features = max(30, int(len(feature_names) * 0.5))
     if len(selected) < min_features:
         selected = feat_imp.head(min_features)['feature'].tolist()
@@ -159,7 +153,7 @@ def select_features(X, y, params, threshold=0.95):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation.
+    Perform stratified k-fold cross-validation with calibration.
     
     Args:
         X: Features
@@ -169,7 +163,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         test_type: 'A' or 'B'
         
     Returns:
-        tuple: (best_model, cv_scores, oof_predictions, selected_features)
+        tuple: (best_model, cv_scores, oof_predictions, selected_features, calibrator)
     """
     n_splits = config.training['n_splits']
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -177,7 +171,6 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger = logging.getLogger(__name__)
     logger.info(f"Starting {n_splits}-fold CV for type {test_type}")
     
-    # Feature selection on full dataset
     if config.training['use_feature_selection']:
         selected_features = select_features(
             X, y, params, 
@@ -221,20 +214,31 @@ def cross_validate(X, y, params, config, test_type='A'):
                f"ECE: {oof_metrics['ece']:.6f}, "
                f"Combined: {oof_metrics['combined']:.6f}")
     
-    # Calculate mean and std of CV metrics
     metrics_df = pd.DataFrame(cv_metrics)
     for metric in ['auc', 'brier', 'ece', 'combined']:
         mean = metrics_df[metric].mean()
         std = metrics_df[metric].std()
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
-    # Select best model based on combined score
     best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
     best_model = models[best_fold_idx]
     logger.info(f"Best model from fold {best_fold_idx + 1} "
                f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
-    return best_model, cv_metrics, oof_preds, selected_features
+    # Train calibrator on OOF predictions
+    logger.info("Training probability calibrator...")
+    calibrator = IsotonicRegression(out_of_bounds='clip')
+    calibrator.fit(oof_preds, y)
+    
+    calibrated_preds = calibrator.transform(oof_preds)
+    calibrated_metrics = calculate_combined_score(y, calibrated_preds)
+    
+    logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
+               f"Brier: {calibrated_metrics['brier']:.6f}, "
+               f"ECE: {calibrated_metrics['ece']:.6f}, "
+               f"Combined: {calibrated_metrics['combined']:.6f}")
+    
+    return best_model, cv_metrics, oof_preds, selected_features, calibrator
 
 def prepare_features(df, test_type='A'):
     """
@@ -276,7 +280,8 @@ def main():
         2. Preprocess by test type
         3. Generate features
         4. Train with cross-validation
-        5. Save models and feature names
+        5. Train calibrator
+        6. Save models, calibrators, and feature names
     """
     start_time = time.time()
     
@@ -343,7 +348,7 @@ def main():
         logger.info(f"Features A: {X_a.shape}")
         logger.info(f"Initial feature count: {len(X_a.columns)}")
         
-        model_a, cv_metrics_a, oof_preds_a, selected_features_a = cross_validate(
+        model_a, cv_metrics_a, oof_preds_a, selected_features_a, calibrator_a = cross_validate(
             X_a, y_a, 
             config.lgbm_params_a,
             config,
@@ -353,6 +358,10 @@ def main():
         model_path_a = config.paths['model']
         joblib.dump(model_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
+        
+        calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
+        joblib.dump(calibrator_a, calibrator_path_a)
+        logger.info(f"Calibrator A saved to {calibrator_path_a}")
         
         feature_names_path_a = config.paths['feature_names_a']
         save_feature_names(selected_features_a, feature_names_path_a)
@@ -367,7 +376,7 @@ def main():
         logger.info(f"Features B: {X_b.shape}")
         logger.info(f"Initial feature count: {len(X_b.columns)}")
         
-        model_b, cv_metrics_b, oof_preds_b, selected_features_b = cross_validate(
+        model_b, cv_metrics_b, oof_preds_b, selected_features_b, calibrator_b = cross_validate(
             X_b, y_b,
             config.lgbm_params_b,
             config,
@@ -378,6 +387,10 @@ def main():
         joblib.dump(model_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
         
+        calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
+        joblib.dump(calibrator_b, calibrator_path_b)
+        logger.info(f"Calibrator B saved to {calibrator_path_b}")
+        
         feature_names_path_b = config.paths['feature_names_b']
         save_feature_names(selected_features_b, feature_names_path_b)
         logger.info(f"Feature names B saved to {feature_names_path_b}")
@@ -386,7 +399,6 @@ def main():
         logger.info("TRAINING COMPLETE")
         logger.info("="*60)
         
-        # Calculate mean metrics
         metrics_df_a = pd.DataFrame(cv_metrics_a)
         metrics_df_b = pd.DataFrame(cv_metrics_b)
         
