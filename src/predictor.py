@@ -34,6 +34,7 @@ class Predictor:
         self.calibrator_b = None
         self.feature_names_a = None
         self.feature_names_b = None
+        self.use_calibration = config.training.get('use_calibration', False)
         
         # Drop columns that should not be used as features
         self.drop_cols = ["Test_id", "Test", "PrimaryKey", "Age", "TestDate"]
@@ -65,7 +66,11 @@ class Predictor:
             logger.warning(f"Model B not found at {model_b_path}")
     
     def _load_calibrators(self) -> None:
-        """Load calibrators from disk."""
+        """Load calibrators from disk if available."""
+        if not self.use_calibration:
+            logger.info("Calibration disabled in config")
+            return
+        
         calibrator_a_path = self.config.paths['model_dir'] / 'calibrator_A.pkl'
         calibrator_b_path = self.config.paths['model_dir'] / 'calibrator_B.pkl'
         
@@ -74,14 +79,14 @@ class Predictor:
             self.calibrator_a = joblib.load(calibrator_a_path)
             logger.info("Calibrator A loaded successfully")
         else:
-            logger.warning(f"Calibrator A not found at {calibrator_a_path}")
+            logger.info(f"Calibrator A not found at {calibrator_a_path}")
         
         if calibrator_b_path.exists():
             logger.info(f"Loading calibrator B from {calibrator_b_path}")
             self.calibrator_b = joblib.load(calibrator_b_path)
             logger.info("Calibrator B loaded successfully")
         else:
-            logger.warning(f"Calibrator B not found at {calibrator_b_path}")
+            logger.info(f"Calibrator B not found at {calibrator_b_path}")
     
     def _load_feature_names(self) -> None:
         """Load feature names from disk."""
@@ -132,7 +137,7 @@ class Predictor:
             pred_a = self._batch_predict(self.model_a, X_a)
             
             # Apply calibration if available
-            if self.calibrator_a is not None:
+            if self.use_calibration and self.calibrator_a is not None:
                 logger.info("Applying calibration to Type A predictions")
                 pred_a = self.calibrator_a.transform(pred_a)
                 pred_a = np.clip(pred_a, 0.0, 1.0)
@@ -149,7 +154,7 @@ class Predictor:
             pred_b = self._batch_predict(self.model_b, X_b)
             
             # Apply calibration if available
-            if self.calibrator_b is not None:
+            if self.use_calibration and self.calibrator_b is not None:
                 logger.info("Applying calibration to Type B predictions")
                 pred_b = self.calibrator_b.transform(pred_b)
                 pred_b = np.clip(pred_b, 0.0, 1.0)

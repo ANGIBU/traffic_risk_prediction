@@ -75,6 +75,35 @@ def calculate_combined_score(y_true, y_pred):
         'combined': combined
     }
 
+def remove_correlated_features(X, threshold=0.95):
+    """
+    Remove highly correlated features.
+    
+    Args:
+        X: Feature matrix
+        threshold: Correlation threshold
+        
+    Returns:
+        list: Features to keep
+    """
+    logger = logging.getLogger(__name__)
+    logger.info(f"Removing correlated features (threshold={threshold})")
+    
+    corr_matrix = X.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    
+    to_drop = []
+    for column in upper.columns:
+        if any(upper[column] > threshold):
+            to_drop.append(column)
+    
+    features_to_keep = [f for f in X.columns if f not in to_drop]
+    
+    logger.info(f"Removed {len(to_drop)} correlated features")
+    logger.info(f"Keeping {len(features_to_keep)} features")
+    
+    return features_to_keep
+
 def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
     """
     Train single LightGBM model.
@@ -106,7 +135,7 @@ def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
     
     return model
 
-def select_features(X, y, params, threshold=0.95):
+def select_features(X, y, params, threshold=0.90):
     """
     Select important features using feature importance.
     
@@ -142,7 +171,7 @@ def select_features(X, y, params, threshold=0.95):
     
     selected = feat_imp[feat_imp['cumulative'] <= threshold]['feature'].tolist()
     
-    min_features = max(30, int(len(feature_names) * 0.5))
+    min_features = max(30, int(len(feature_names) * 0.4))
     if len(selected) < min_features:
         selected = feat_imp.head(min_features)['feature'].tolist()
     
@@ -153,7 +182,7 @@ def select_features(X, y, params, threshold=0.95):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation with calibration.
+    Perform stratified k-fold cross-validation.
     
     Args:
         X: Features
@@ -171,6 +200,14 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger = logging.getLogger(__name__)
     logger.info(f"Starting {n_splits}-fold CV for type {test_type}")
     
+    # Remove correlated features first
+    if config.training['remove_correlated_features']:
+        corr_threshold = config.feature_engineering['correlation_threshold']
+        keep_features = remove_correlated_features(X, threshold=corr_threshold)
+        X = X[keep_features]
+        logger.info(f"After correlation removal: {len(X.columns)} features")
+    
+    # Feature selection
     if config.training['use_feature_selection']:
         selected_features = select_features(
             X, y, params, 
@@ -225,18 +262,22 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger.info(f"Best model from fold {best_fold_idx + 1} "
                f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
-    # Train calibrator on OOF predictions
-    logger.info("Training probability calibrator...")
-    calibrator = IsotonicRegression(out_of_bounds='clip')
-    calibrator.fit(oof_preds, y)
-    
-    calibrated_preds = calibrator.transform(oof_preds)
-    calibrated_metrics = calculate_combined_score(y, calibrated_preds)
-    
-    logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
-               f"Brier: {calibrated_metrics['brier']:.6f}, "
-               f"ECE: {calibrated_metrics['ece']:.6f}, "
-               f"Combined: {calibrated_metrics['combined']:.6f}")
+    # Calibrator (optional)
+    calibrator = None
+    if config.training['use_calibration']:
+        logger.info("Training probability calibrator...")
+        calibrator = IsotonicRegression(out_of_bounds='clip')
+        calibrator.fit(oof_preds, y)
+        
+        calibrated_preds = calibrator.transform(oof_preds)
+        calibrated_metrics = calculate_combined_score(y, calibrated_preds)
+        
+        logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
+                   f"Brier: {calibrated_metrics['brier']:.6f}, "
+                   f"ECE: {calibrated_metrics['ece']:.6f}, "
+                   f"Combined: {calibrated_metrics['combined']:.6f}")
+    else:
+        logger.info("Calibration disabled")
     
     return best_model, cv_metrics, oof_preds, selected_features, calibrator
 
@@ -280,8 +321,7 @@ def main():
         2. Preprocess by test type
         3. Generate features
         4. Train with cross-validation
-        5. Train calibrator
-        6. Save models, calibrators, and feature names
+        5. Save models and feature names
     """
     start_time = time.time()
     
@@ -359,9 +399,10 @@ def main():
         joblib.dump(model_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
         
-        calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
-        joblib.dump(calibrator_a, calibrator_path_a)
-        logger.info(f"Calibrator A saved to {calibrator_path_a}")
+        if calibrator_a is not None:
+            calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
+            joblib.dump(calibrator_a, calibrator_path_a)
+            logger.info(f"Calibrator A saved to {calibrator_path_a}")
         
         feature_names_path_a = config.paths['feature_names_a']
         save_feature_names(selected_features_a, feature_names_path_a)
@@ -387,9 +428,10 @@ def main():
         joblib.dump(model_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
         
-        calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
-        joblib.dump(calibrator_b, calibrator_path_b)
-        logger.info(f"Calibrator B saved to {calibrator_path_b}")
+        if calibrator_b is not None:
+            calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
+            joblib.dump(calibrator_b, calibrator_path_b)
+            logger.info(f"Calibrator B saved to {calibrator_path_b}")
         
         feature_names_path_b = config.paths['feature_names_b']
         save_feature_names(selected_features_b, feature_names_path_b)
