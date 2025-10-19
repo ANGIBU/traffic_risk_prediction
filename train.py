@@ -262,14 +262,40 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger.info(f"Best model from fold {best_fold_idx + 1} "
                f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
+    # Ensemble strategy: Use top K folds for calibration
+    if config.training.get('use_ensemble', False) and len(models) >= config.training.get('ensemble_top_k', 3):
+        top_k = config.training['ensemble_top_k']
+        sorted_indices = np.argsort([m['combined'] for m in cv_metrics])[:top_k]
+        logger.info(f"Using top {top_k} folds for ensemble calibration")
+        
+        # Recompute OOF with top K models average
+        oof_ensemble = np.zeros(len(X))
+        for fold_idx, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+            if fold_idx in sorted_indices:
+                X_val = X.iloc[val_idx]
+                model = models[fold_idx]
+                val_pred = model.predict(X_val, num_iteration=model.best_iteration)
+                oof_ensemble[val_idx] += val_pred / top_k
+        
+        ensemble_metrics = calculate_combined_score(y, oof_ensemble)
+        logger.info(f"Ensemble OOF - AUC: {ensemble_metrics['auc']:.6f}, "
+                   f"Brier: {ensemble_metrics['brier']:.6f}, "
+                   f"ECE: {ensemble_metrics['ece']:.6f}, "
+                   f"Combined: {ensemble_metrics['combined']:.6f}")
+        
+        # Use ensemble OOF for calibration
+        oof_for_calibration = oof_ensemble
+    else:
+        oof_for_calibration = oof_preds
+    
     # Calibrator (optional)
     calibrator = None
     if config.training['use_calibration']:
         logger.info("Training probability calibrator...")
         calibrator = IsotonicRegression(out_of_bounds='clip')
-        calibrator.fit(oof_preds, y)
+        calibrator.fit(oof_for_calibration, y)
         
-        calibrated_preds = calibrator.transform(oof_preds)
+        calibrated_preds = calibrator.transform(oof_for_calibration)
         calibrated_metrics = calculate_combined_score(y, calibrated_preds)
         
         logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "

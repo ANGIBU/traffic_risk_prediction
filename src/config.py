@@ -77,11 +77,13 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 50,
+            'early_stopping_rounds': 100,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.92,
             'use_calibration': True,
-            'remove_correlated_features': False
+            'remove_correlated_features': False,
+            'use_ensemble': True,
+            'ensemble_top_k': 3
         }
         
         # LightGBM hyperparameters for Type A
