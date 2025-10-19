@@ -104,7 +104,7 @@ def remove_correlated_features(X, threshold=0.95):
     
     return features_to_keep
 
-def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
+def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50, test_type='A'):
     """
     Train single LightGBM model.
     
@@ -114,6 +114,7 @@ def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
         X_val: Validation features
         y_val: Validation labels
         params: Model hyperparameters
+        early_stopping_rounds: Early stopping rounds
         test_type: 'A' or 'B'
         
     Returns:
@@ -129,7 +130,7 @@ def train_model(X_train, y_train, X_val, y_val, params, test_type='A'):
         valid_names=['train', 'valid'],
         callbacks=[
             lgb.log_evaluation(period=50),
-            lgb.early_stopping(stopping_rounds=50, verbose=True)
+            lgb.early_stopping(stopping_rounds=early_stopping_rounds, verbose=True)
         ]
     )
     
@@ -207,16 +208,26 @@ def cross_validate(X, y, params, config, test_type='A'):
         X = X[keep_features]
         logger.info(f"After correlation removal: {len(X.columns)} features")
     
-    # Feature selection
+    # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
-        selected_features = select_features(
-            X, y, params, 
-            threshold=config.training['feature_selection_threshold']
-        )
+        if test_type == 'B':
+            threshold = config.training.get('feature_selection_threshold_b', 0.85)
+        else:
+            threshold = config.training.get('feature_selection_threshold', 0.90)
+        
+        selected_features = select_features(X, y, params, threshold=threshold)
         X = X[selected_features]
         logger.info(f"Using {len(selected_features)} selected features")
     else:
         selected_features = X.columns.tolist()
+    
+    # Early stopping rounds based on test type
+    if test_type == 'B':
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 30)
+    else:
+        early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
+    
+    logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
     cv_metrics = []
     oof_preds = np.zeros(len(X))
@@ -231,7 +242,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Train: {len(X_train)}, Val: {len(X_val)}")
         logger.info(f"Train pos rate: {y_train.mean():.4f}, Val pos rate: {y_val.mean():.4f}")
         
-        model = train_model(X_train, y_train, X_val, y_val, params, test_type)
+        model = train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds, test_type)
         models.append(model)
         
         val_pred = model.predict(X_val, num_iteration=model.best_iteration)
