@@ -79,9 +79,9 @@ class Config:
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.90,
-            'use_calibration': False,
-            'remove_correlated_features': True
+            'feature_selection_threshold': 0.92,
+            'use_calibration': True,
+            'remove_correlated_features': False
         }
         
         # LightGBM hyperparameters for Type A
@@ -89,7 +89,7 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 20,
+            'num_leaves': 25,
             'max_depth': 6,
             'min_child_samples': 30,
             'min_child_weight': 0.001,
@@ -100,8 +100,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 1.0,
-            'reg_lambda': 1.0,
+            'reg_alpha': 0.7,
+            'reg_lambda': 0.7,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -114,7 +114,7 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 20,
+            'num_leaves': 25,
             'max_depth': 6,
             'min_child_samples': 50,
             'min_child_weight': 0.001,
@@ -125,8 +125,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 20.0,
             'is_unbalance': False,
-            'reg_alpha': 1.5,
-            'reg_lambda': 1.5,
+            'reg_alpha': 1.0,
+            'reg_lambda': 1.0,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
