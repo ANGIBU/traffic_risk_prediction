@@ -71,29 +71,26 @@ class Config:
             'correlation_threshold': 0.95
         }
         
-        # Training settings
+        # Training settings - Exp #6 proven configuration
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 30,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.85,
             'use_calibration': True,
-            'remove_correlated_features': False,
-            'use_ensemble': True,
-            'ensemble_top_k': 3
+            'remove_correlated_features': True,
+            'use_ensemble': False
         }
         
-        # LightGBM hyperparameters for Type A
+        # LightGBM hyperparameters for Type A - Exp #6 exact settings
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 25,
+            'num_leaves': 20,
             'max_depth': 6,
             'min_child_samples': 30,
             'min_child_weight': 0.001,
@@ -104,8 +101,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 0.7,
-            'reg_lambda': 0.7,
+            'reg_alpha': 1.0,
+            'reg_lambda': 1.0,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -113,24 +110,24 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B
+        # LightGBM hyperparameters for Type B - Fine-tuned from Exp #6
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 15,
-            'max_depth': 4,
-            'min_child_samples': 80,
+            'num_leaves': 22,
+            'max_depth': 6,
+            'min_child_samples': 45,
             'min_child_weight': 0.001,
-            'learning_rate': 0.015,
+            'learning_rate': 0.018,
             'n_estimators': 2000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 20.0,
+            'scale_pos_weight': 22.0,
             'is_unbalance': False,
-            'reg_alpha': 2.0,
-            'reg_lambda': 2.0,
+            'reg_alpha': 1.3,
+            'reg_lambda': 1.3,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
