@@ -1,6 +1,5 @@
 # train.py
 # Model training script with cross-validation and calibration
-# 0.1869929466
 
 import sys
 import logging
@@ -184,7 +183,7 @@ def select_features(X, y, params, threshold=0.90):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation.
+    Perform stratified k-fold cross-validation with ensemble capability.
     
     Args:
         X: Features
@@ -212,7 +211,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.85)
+            threshold = config.training.get('feature_selection_threshold_b', 0.75)
         else:
             threshold = config.training.get('feature_selection_threshold', 0.90)
         
@@ -224,7 +223,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 30)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 50)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
