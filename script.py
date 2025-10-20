@@ -4,7 +4,7 @@
 import sys
 import logging
 import pandas as pd
-import numpy as npㅍ
+import numpy as np
 from pathlib import Path
 import time
 import warnings
