@@ -50,7 +50,7 @@ class Config:
         
         # Inference parameters
         self.inference = {
-            'batch_size': 10000,
+            'batch_size': 15000,
             'num_threads': 3,
             'use_progress': False
         }
@@ -68,26 +68,26 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.95
+            'correlation_threshold': 0.93
         }
         
-        # Training settings - Conservative approach
+        # Training settings - Aggressive Type B focus
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 30,
+            'early_stopping_rounds_b': 75,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.85,
+            'feature_selection_threshold_b': 0.80,
             'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': False
         }
         
-        # LightGBM hyperparameters for Type A - Keep stable settings
+        # LightGBM hyperparameters for Type A - Keep winning settings
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
@@ -112,25 +112,25 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Conservative tuning
+        # LightGBM hyperparameters for Type B - Aggressive optimization
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 24,
-            'max_depth': 6,
-            'min_child_samples': 40,
+            'num_leaves': 40,
+            'max_depth': 8,
+            'min_child_samples': 20,
             'min_child_weight': 0.001,
-            'learning_rate': 0.020,
+            'learning_rate': 0.035,
             'n_estimators': 2000,
-            'subsample': 0.8,
+            'subsample': 0.85,
             'subsample_freq': 1,
-            'colsample_bytree': 0.8,
-            'scale_pos_weight': 20.0,
+            'colsample_bytree': 0.9,
+            'scale_pos_weight': 12.0,
             'is_unbalance': False,
-            'reg_alpha': 1.2,
-            'reg_lambda': 1.2,
-            'min_split_gain': 0.02,
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
+            'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,
             'random_state': 42,
