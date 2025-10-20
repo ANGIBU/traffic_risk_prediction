@@ -71,15 +71,17 @@ class Config:
             'correlation_threshold': 0.95
         }
         
-        # Training settings - Exp #6 proven configuration
+        # Training settings - Exp #6 proven configuration + Type B tuning
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
+            'early_stopping_rounds_b': 30,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
+            'feature_selection_threshold_b': 0.85,
             'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': False
