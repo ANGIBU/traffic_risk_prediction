@@ -84,32 +84,6 @@ class FeatureEngineer:
         b_num = self._ensure_numeric(b)
         return a_num + b_num
     
-    def _safe_log(self, x):
-        """
-        Safe log transformation.
-        
-        Args:
-            x: Input value
-            
-        Returns:
-            Log transformed value
-        """
-        x_num = self._ensure_numeric(x)
-        return np.log1p(np.clip(x_num, 0, None))
-    
-    def _safe_sqrt(self, x):
-        """
-        Safe square root transformation.
-        
-        Args:
-            x: Input value
-            
-        Returns:
-            Square root transformed value
-        """
-        x_num = self._ensure_numeric(x)
-        return np.sqrt(np.clip(x_num, 0, None))
-    
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A with domain knowledge.
@@ -321,13 +295,11 @@ class FeatureEngineer:
             b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
             b2_acc = self._ensure_numeric(feats["B2_acc_task1"])
             feats["B1_B2_acc_gap"] = b2_acc - b1_acc
-            feats["B1_B2_acc_decline"] = (b1_acc > b2_acc).astype(float)
         
         if self._has(feats, ["B1_rt_mean", "B2_rt_mean"]):
             b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
             b2_rt = self._ensure_numeric(feats["B2_rt_mean"])
             feats["B1_B2_rt_gap"] = b2_rt - b1_rt
-            feats["B1_B2_rt_increase"] = (b2_rt > b1_rt).astype(float)
         
         # NEW: B3-B4-B5 sequential performance pattern
         if self._has(feats, ["B3_acc_rate", "B4_acc_rate", "B5_acc_rate"]):
@@ -335,14 +307,12 @@ class FeatureEngineer:
             b4_acc = self._ensure_numeric(feats["B4_acc_rate"])
             b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
             feats["B3_B5_acc_gap"] = b3_acc - b5_acc
-            feats["B4_acc_drop"] = ((b3_acc > b4_acc) & (b4_acc > b5_acc)).astype(float)
         
         if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
             b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
             b4_rt = self._ensure_numeric(feats["B4_rt_mean"])
             b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
             feats["B3_B5_rt_gap"] = b5_rt - b3_rt
-            feats["B4_rt_spike"] = ((b4_rt > b3_rt) & (b4_rt > b5_rt)).astype(float)
         
         # TYPE B SPECIFIC: Sequential test pattern (B1→B2→B3)
         if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
@@ -385,19 +355,6 @@ class FeatureEngineer:
             feats["B678_acc_min"] = pd.DataFrame({
                 'b6': b6_acc, 'b7': b7_acc, 'b8': b8_acc
             }).min(axis=1)
-        
-        # NEW: Non-linear transformations for key features
-        if "B1_rt_mean" in feats.columns:
-            feats["B1_rt_log"] = self._safe_log(feats["B1_rt_mean"])
-            feats["B1_rt_sqrt"] = self._safe_sqrt(feats["B1_rt_mean"])
-        
-        if "B3_rt_mean" in feats.columns:
-            feats["B3_rt_log"] = self._safe_log(feats["B3_rt_mean"])
-            feats["B3_rt_sqrt"] = self._safe_sqrt(feats["B3_rt_mean"])
-        
-        if "B5_rt_mean" in feats.columns:
-            feats["B5_rt_log"] = self._safe_log(feats["B5_rt_mean"])
-            feats["B5_rt_sqrt"] = self._safe_sqrt(feats["B5_rt_mean"])
         
         # Median-based robustness (key measure)
         if self._has(feats, ["B3_rt_median", "B3_rt_mean"]):
