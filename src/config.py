@@ -81,7 +81,7 @@ class Config:
             'early_stopping_rounds_b': 120,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.84,
+            'feature_selection_threshold_b': 0.86,
             'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': False,
