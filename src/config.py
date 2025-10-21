@@ -71,30 +71,31 @@ class Config:
             'correlation_threshold': 0.93
         }
         
-        # Training settings - Aggressive Type B focus
+        # Training settings with optimized parameters
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 75,
+            'early_stopping_rounds_b': 100,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.80,
+            'feature_selection_threshold_b': 0.85,
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': False
+            'use_ensemble': True,
+            'ensemble_top_k': 3
         }
         
-        # LightGBM hyperparameters for Type A - Keep winning settings
+        # LightGBM hyperparameters for Type A - Regularization focus
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 20,
+            'num_leaves': 18,
             'max_depth': 6,
-            'min_child_samples': 30,
+            'min_child_samples': 40,
             'min_child_weight': 0.001,
             'learning_rate': 0.02,
             'n_estimators': 2000,
@@ -103,8 +104,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 1.0,
-            'reg_lambda': 1.0,
+            'reg_alpha': 1.5,
+            'reg_lambda': 1.5,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -112,16 +113,16 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Aggressive optimization
+        # LightGBM hyperparameters for Type B - Balanced approach
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 40,
+            'num_leaves': 35,
             'max_depth': 8,
-            'min_child_samples': 20,
+            'min_child_samples': 30,
             'min_child_weight': 0.001,
-            'learning_rate': 0.035,
+            'learning_rate': 0.025,
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,
