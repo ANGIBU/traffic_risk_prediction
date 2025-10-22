@@ -113,24 +113,24 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Regularization Focus
+        # LightGBM hyperparameters for Type B - Fine Tuning
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 22,
+            'num_leaves': 26,
             'max_depth': 8,
             'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.020,
+            'learning_rate': 0.018,
             'n_estimators': 2000,
-            'subsample': 0.78,
+            'subsample': 0.82,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
             'scale_pos_weight': 12.0,
             'is_unbalance': False,
-            'reg_alpha': 1.0,
-            'reg_lambda': 1.0,
+            'reg_alpha': 0.9,
+            'reg_lambda': 0.9,
             'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,

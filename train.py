@@ -1,6 +1,5 @@
 # train.py
 # Model training script with cross-validation and calibration
-# Current target: 0.17 or below
 
 import sys
 import logging
