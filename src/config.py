@@ -78,7 +78,7 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 120,
+            'early_stopping_rounds_b': 200,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
             'feature_selection_threshold_b': 0.86,
@@ -113,7 +113,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Fine Tuning
+        # LightGBM hyperparameters for Type B - Extended Training
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
@@ -123,14 +123,14 @@ class Config:
             'min_child_samples': 35,
             'min_child_weight': 0.001,
             'learning_rate': 0.018,
-            'n_estimators': 2000,
+            'n_estimators': 2500,
             'subsample': 0.82,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
             'scale_pos_weight': 12.0,
             'is_unbalance': False,
-            'reg_alpha': 0.9,
-            'reg_lambda': 0.9,
+            'reg_alpha': 0.88,
+            'reg_lambda': 0.88,
             'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,
