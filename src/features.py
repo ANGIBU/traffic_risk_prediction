@@ -86,7 +86,7 @@ class FeatureEngineer:
     
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Add derived features for test type A with domain knowledge.
+        Add derived features for test type A with domain knowledge and Type A specific enhancements.
         
         Args:
             df: Preprocessed type A data
@@ -202,6 +202,121 @@ class FeatureEngineer:
         
         if self._has(feats, ["Age_num", "A_overall_consistency"]):
             feats["Age_consistency_interaction"] = self._safe_multiply(feats["Age_num"], feats["A_overall_consistency"])
+        
+        # ========== NEW TYPE A SPECIFIC FEATURES ==========
+        
+        # 1. A1-A2-A3 Sequential Pattern Analysis
+        if self._has(feats, ["A1_rt_mean", "A2_rt_mean", "A3_rt_mean"]):
+            a1_rt = self._ensure_numeric(feats["A1_rt_mean"])
+            a2_rt = self._ensure_numeric(feats["A2_rt_mean"])
+            a3_rt = self._ensure_numeric(feats["A3_rt_mean"])
+            
+            feats["A123_rt_progression"] = (a2_rt - a1_rt) + (a3_rt - a2_rt)
+            feats["A123_rt_acceleration"] = (a3_rt - a2_rt) - (a2_rt - a1_rt)
+            feats["A123_rt_consistency"] = 1.0 - pd.DataFrame({
+                'a1': a1_rt, 'a2': a2_rt, 'a3': a3_rt
+            }).std(axis=1) / (pd.DataFrame({
+                'a1': a1_rt, 'a2': a2_rt, 'a3': a3_rt
+            }).mean(axis=1) + eps)
+        
+        # 2. Stroop Effect Detailed Analysis (A4)
+        if self._has(feats, ["A4_stroop_diff", "A4_rt_mean"]):
+            stroop_diff = self._ensure_numeric(feats["A4_stroop_diff"])
+            a4_rt = self._ensure_numeric(feats["A4_rt_mean"])
+            
+            feats["A4_stroop_effect_ratio"] = self._safe_div(stroop_diff, a4_rt, eps)
+            feats["A4_stroop_interference"] = stroop_diff.abs()
+        
+        # 3. Attention Shift Pattern (A1-A2 comparison)
+        if self._has(feats, ["A1_resp_rate", "A2_resp_rate"]):
+            a1_resp = self._ensure_numeric(feats["A1_resp_rate"])
+            a2_resp = self._ensure_numeric(feats["A2_resp_rate"])
+            
+            feats["A12_attention_shift"] = a2_resp - a1_resp
+            feats["A12_attention_stability"] = 1.0 - (a2_resp - a1_resp).abs()
+        
+        # 4. Visual Search Efficiency (A3)
+        if self._has(feats, ["A3_rt_mean", "A3_resp2_rate"]):
+            a3_rt = self._ensure_numeric(feats["A3_rt_mean"])
+            a3_resp = self._ensure_numeric(feats["A3_resp2_rate"])
+            
+            feats["A3_search_efficiency"] = self._safe_div(a3_resp, a3_rt, eps)
+        
+        if self._has(feats, ["A3_valid_ratio", "A3_invalid_ratio"]):
+            valid = self._ensure_numeric(feats["A3_valid_ratio"])
+            invalid = self._ensure_numeric(feats["A3_invalid_ratio"])
+            
+            feats["A3_discrimination_ability"] = valid - invalid
+            feats["A3_error_rate"] = invalid
+        
+        # 5. Change Detection Sensitivity (A5)
+        if self._has(feats, ["A5_acc_nonchange", "A5_acc_change"]):
+            nonchange = self._ensure_numeric(feats["A5_acc_nonchange"])
+            change = self._ensure_numeric(feats["A5_acc_change"])
+            
+            feats["A5_detection_bias"] = nonchange - change
+            feats["A5_detection_balance"] = 1.0 - (nonchange - change).abs()
+        
+        # 6. Consistency across all tests
+        if self._has(feats, ["A1_rt_consistency", "A2_rt_consistency", "A4_rt_consistency"]):
+            a1_cons = self._ensure_numeric(feats["A1_rt_consistency"])
+            a2_cons = self._ensure_numeric(feats["A2_rt_consistency"])
+            a4_cons = self._ensure_numeric(feats["A4_rt_consistency"])
+            
+            feats["A_consistency_stability"] = 1.0 - pd.DataFrame({
+                'a1': a1_cons, 'a2': a2_cons, 'a4': a4_cons
+            }).std(axis=1)
+        
+        # 7. Outlier tendency
+        if self._has(feats, ["A1_rt_outlier_count", "A3_rt_outlier_count", "A4_rt_outlier_count"]):
+            a1_out = self._ensure_numeric(feats["A1_rt_outlier_count"])
+            a3_out = self._ensure_numeric(feats["A3_rt_outlier_count"])
+            a4_out = self._ensure_numeric(feats["A4_rt_outlier_count"])
+            
+            feats["A_total_outliers"] = a1_out + a3_out + a4_out
+            feats["A_outlier_consistency"] = 1.0 - pd.DataFrame({
+                'a1': a1_out, 'a3': a3_out, 'a4': a4_out
+            }).std(axis=1) / (pd.DataFrame({
+                'a1': a1_out, 'a3': a3_out, 'a4': a4_out
+            }).mean(axis=1) + eps)
+        
+        # 8. IQR-based stability
+        if self._has(feats, ["A1_rt_iqr", "A3_rt_iqr", "A4_rt_iqr"]):
+            a1_iqr = self._ensure_numeric(feats["A1_rt_iqr"])
+            a3_iqr = self._ensure_numeric(feats["A3_rt_iqr"])
+            a4_iqr = self._ensure_numeric(feats["A4_rt_iqr"])
+            
+            feats["A_iqr_mean"] = (a1_iqr + a3_iqr + a4_iqr) / 3.0
+            feats["A_iqr_stability"] = 1.0 - pd.DataFrame({
+                'a1': a1_iqr, 'a3': a3_iqr, 'a4': a4_iqr
+            }).std(axis=1) / (feats["A_iqr_mean"] + eps)
+        
+        # 9. Speed change pattern
+        if self._has(feats, ["A1_rt_change_rate", "A2_rt_change_rate", "A4_rt_change_rate"]):
+            a1_change = self._ensure_numeric(feats["A1_rt_change_rate"])
+            a2_change = self._ensure_numeric(feats["A2_rt_change_rate"])
+            a4_change = self._ensure_numeric(feats["A4_rt_change_rate"])
+            
+            feats["A_speed_learning"] = (a1_change + a2_change + a4_change) / 3.0
+            feats["A_speed_decline"] = feats["A_speed_learning"].apply(lambda x: max(0, -x))
+        
+        # 10. Composite risk indicators for Type A
+        risk_components = []
+        if self._has(feats, ["A_overall_rt_std", "A_overall_rt_mean"]):
+            cv = self._safe_div(feats["A_overall_rt_std"], feats["A_overall_rt_mean"], eps)
+            risk_components.append(0.3 * self._ensure_numeric(cv).fillna(0))
+        if self._has(feats, ["A_overall_acc"]):
+            risk_components.append(0.3 * (1 - self._ensure_numeric(feats["A_overall_acc"]).fillna(0)))
+        if self._has(feats, ["A_overall_consistency"]):
+            risk_components.append(0.2 * (1 - self._ensure_numeric(feats["A_overall_consistency"]).fillna(0)))
+        if self._has(feats, ["A_total_outliers"]):
+            outliers_norm = self._ensure_numeric(feats["A_total_outliers"]).fillna(0) / 10.0
+            risk_components.append(0.2 * outliers_norm.clip(0, 1))
+        
+        if risk_components:
+            feats["RiskScore_A"] = sum(risk_components)
+        
+        # ========== END OF NEW TYPE A FEATURES ==========
         
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test A: {feats.shape}")
