@@ -15,6 +15,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.feature_selection import SelectFromModel
 from sklearn.isotonic import IsotonicRegression
+from imblearn.over_sampling import SMOTE
 import lightgbm as lgb
 
 sys.path.append(str(Path(__file__).parent))
@@ -229,6 +230,12 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
+    # SMOTE configuration for Type B
+    use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
+    if use_smote:
+        smote_strategy = config.training.get('smote_sampling_strategy', 0.15)
+        logger.info(f"SMOTE enabled for Type B (sampling_strategy={smote_strategy})")
+    
     cv_metrics = []
     oof_preds = np.zeros(len(X))
     models = []
@@ -242,7 +249,22 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Train: {len(X_train)}, Val: {len(X_val)}")
         logger.info(f"Train pos rate: {y_train.mean():.4f}, Val pos rate: {y_val.mean():.4f}")
         
-        model = train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds, test_type)
+        # Apply SMOTE for Type B
+        if use_smote:
+            logger.info(f"Applying SMOTE to training data...")
+            smote = SMOTE(
+                sampling_strategy=smote_strategy,
+                random_state=42 + fold,
+                k_neighbors=5
+            )
+            X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+            logger.info(f"After SMOTE: {len(X_train_resampled)} samples, pos rate: {y_train_resampled.mean():.4f}")
+            
+            model = train_model(X_train_resampled, y_train_resampled, X_val, y_val, 
+                              params, early_stopping_rounds, test_type)
+        else:
+            model = train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds, test_type)
+        
         models.append(model)
         
         val_pred = model.predict(X_val, num_iteration=model.best_iteration)
@@ -424,7 +446,7 @@ def main():
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model")
+        logger.info("STEP 5: Training Type B model with SMOTE")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
