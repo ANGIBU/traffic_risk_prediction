@@ -71,14 +71,14 @@ class Config:
             'correlation_threshold': 0.93
         }
         
-        # Training settings
+        # Training settings - Phase 1: Type B learning optimization
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 100,
+            'early_stopping_rounds_b': 150,  # Phase 1: 100 -> 150 for Type B
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
             'feature_selection_threshold_b': 0.88,
@@ -90,7 +90,7 @@ class Config:
             'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #8 Recovery
+        # LightGBM hyperparameters for Type A
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
@@ -115,7 +115,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #8 with SMOTE
+        # LightGBM hyperparameters for Type B - Phase 1: Scale pos weight optimization
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
@@ -129,7 +129,7 @@ class Config:
             'subsample': 0.85,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 12.0,
+            'scale_pos_weight': 15.0,  # Phase 1: 12.0 -> 15.0 for better imbalance handling
             'is_unbalance': False,
             'reg_alpha': 0.8,
             'reg_lambda': 0.8,

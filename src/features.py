@@ -211,6 +211,7 @@ class FeatureEngineer:
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B with domain knowledge and Type B specific patterns.
+        Phase 1: Added 15 new features for Type B bottleneck improvement.
         
         Args:
             df: Preprocessed type B data
@@ -315,7 +316,7 @@ class FeatureEngineer:
             b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
             feats["B3_B5_rt_gap"] = b5_rt - b3_rt
         
-        # Sequential test pattern (B1→B2→B3)
+        # Sequential test pattern (B1->B2->B3)
         if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
             b1_num = self._ensure_numeric(feats["B1_rt_mean"])
             b2_num = self._ensure_numeric(feats["B2_rt_mean"])
@@ -325,7 +326,7 @@ class FeatureEngineer:
                 'b1': b1_num, 'b2': b2_num, 'b3': b3_num
             }).std(axis=1)
         
-        # Sequential test pattern (B3→B4→B5)
+        # Sequential test pattern (B3->B4->B5)
         if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
             b3_num = self._ensure_numeric(feats["B3_rt_mean"])
             b4_num = self._ensure_numeric(feats["B4_rt_mean"])
@@ -516,6 +517,137 @@ class FeatureEngineer:
         
         if risk_components:
             feats["TypeB_comprehensive_risk"] = sum(risk_components)
+        
+        # ========================================
+        # PHASE 1: 15 NEW FEATURES FOR TYPE B
+        # ========================================
+        
+        # Sequential Pattern Reinforcement (5 features)
+        
+        # 1. B123_acc_decline_rate: Early sequence accuracy decline rate
+        if self._has(feats, ["B1_acc_task1", "B2_acc_task1", "B3_acc_rate"]):
+            b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
+            b2_acc = self._ensure_numeric(feats["B2_acc_task1"])
+            b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
+            b1_to_b2 = self._safe_div(b2_acc - b1_acc, b1_acc, eps)
+            b2_to_b3 = self._safe_div(b3_acc - b2_acc, b2_acc, eps)
+            feats["B123_acc_decline_rate"] = (b1_to_b2 + b2_to_b3) / 2.0
+        
+        # 2. B345_acc_degradation: Late sequence performance drop
+        if self._has(feats, ["B3_acc_rate", "B4_acc_rate", "B5_acc_rate"]):
+            b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
+            b4_acc = self._ensure_numeric(feats["B4_acc_rate"])
+            b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
+            b3_to_b4 = self._safe_div(b4_acc - b3_acc, b3_acc, eps)
+            b4_to_b5 = self._safe_div(b5_acc - b4_acc, b4_acc, eps)
+            feats["B345_acc_degradation"] = (b3_to_b4 + b4_to_b5) / 2.0
+        
+        # 3. B123_rt_acceleration: Early sequence RT increase rate
+        if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
+            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
+            b2_rt = self._ensure_numeric(feats["B2_rt_mean"])
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
+            b1_to_b2_rate = self._safe_div(b2_rt - b1_rt, b1_rt, eps)
+            b2_to_b3_rate = self._safe_div(b3_rt - b2_rt, b2_rt, eps)
+            feats["B123_rt_acceleration_rate"] = (b1_to_b2_rate + b2_to_b3_rate) / 2.0
+        
+        # 4. B345_rt_deceleration: Late sequence RT decrease rate
+        if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
+            b4_rt = self._ensure_numeric(feats["B4_rt_mean"])
+            b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
+            b3_to_b4_rate = self._safe_div(b4_rt - b3_rt, b3_rt, eps)
+            b4_to_b5_rate = self._safe_div(b5_rt - b4_rt, b4_rt, eps)
+            feats["B345_rt_deceleration_rate"] = (b3_to_b4_rate + b4_to_b5_rate) / 2.0
+        
+        # 5. B12345_overall_trend: Full sequence trend indicator
+        if self._has(feats, ["B1_acc_task1", "B2_acc_task1", "B3_acc_rate", "B4_acc_rate", "B5_acc_rate"]):
+            b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
+            b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
+            feats["B12345_overall_trend"] = self._safe_div(b5_acc - b1_acc, b1_acc, eps)
+        
+        # Cross-test Ratio Features (5 features)
+        
+        # 6. B1_B3_acc_ratio: Simple vs memory accuracy
+        if self._has(feats, ["B1_acc_task1", "B3_acc_rate"]):
+            feats["B1_B3_acc_ratio"] = self._safe_div(
+                self._ensure_numeric(feats["B1_acc_task1"]),
+                self._ensure_numeric(feats["B3_acc_rate"]),
+                eps
+            )
+        
+        # 7. B3_B5_acc_ratio: Memory vs flexibility accuracy
+        if self._has(feats, ["B3_acc_rate", "B5_acc_rate"]):
+            feats["B3_B5_acc_ratio"] = self._safe_div(
+                self._ensure_numeric(feats["B3_acc_rate"]),
+                self._ensure_numeric(feats["B5_acc_rate"]),
+                eps
+            )
+        
+        # 8. B1_B5_rt_ratio: Simple vs flexibility RT
+        if self._has(feats, ["B1_rt_mean", "B5_rt_mean"]):
+            feats["B1_B5_rt_ratio"] = self._safe_div(
+                self._ensure_numeric(feats["B1_rt_mean"]),
+                self._ensure_numeric(feats["B5_rt_mean"]),
+                eps
+            )
+        
+        # 9. B2_B4_consistency_ratio: Sustained vs judgment consistency
+        if self._has(feats, ["B2_rt_consistency", "B4_rt_consistency"]):
+            feats["B2_B4_consistency_ratio"] = self._safe_div(
+                self._ensure_numeric(feats["B2_rt_consistency"]),
+                self._ensure_numeric(feats["B4_rt_consistency"]),
+                eps
+            )
+        
+        # 10. B6_B8_attention_ratio: Attention stability
+        if self._has(feats, ["B6_acc_rate", "B8_acc_rate"]):
+            feats["B6_B8_attention_ratio"] = self._safe_div(
+                self._ensure_numeric(feats["B6_acc_rate"]),
+                self._ensure_numeric(feats["B8_acc_rate"]),
+                eps
+            )
+        
+        # Statistical Features (5 features)
+        
+        # 11. B_rt_overall_cv: Overall RT coefficient of variation
+        if self._has(feats, ["B_overall_rt_mean", "B_overall_rt_std"]):
+            feats["B_rt_overall_cv"] = self._safe_div(
+                self._ensure_numeric(feats["B_overall_rt_std"]),
+                self._ensure_numeric(feats["B_overall_rt_mean"]),
+                eps
+            )
+        
+        # 12. B_acc_overall_range: Overall accuracy spread
+        if "B_overall_acc" in feats.columns:
+            acc_cols = [c for c in feats.columns if 'acc_' in c and c.startswith('B') and 'rate' in c]
+            if len(acc_cols) > 0:
+                acc_df = feats[acc_cols].apply(self._ensure_numeric)
+                feats["B_acc_overall_range"] = acc_df.max(axis=1) - acc_df.min(axis=1)
+        
+        # 13. B_consistency_variance: Consistency variation
+        if len(consistency_cols) > 0:
+            cons_df = feats[consistency_cols].apply(self._ensure_numeric)
+            feats["B_consistency_variance"] = cons_df.var(axis=1)
+        
+        # 14. B_trend_uniformity: Trend consistency
+        if len(trend_cols) > 0:
+            trend_df = feats[trend_cols].apply(self._ensure_numeric)
+            feats["B_trend_uniformity"] = 1.0 - trend_df.std(axis=1)
+        
+        # 15. B_stability_score: Composite stability measure
+        stability_parts = []
+        if "B_overall_consistency" in feats.columns:
+            stability_parts.append(0.4 * self._ensure_numeric(feats["B_overall_consistency"]).fillna(0.5))
+        if "B_rt_overall_cv" in feats.columns:
+            cv_normalized = 1.0 - self._ensure_numeric(feats["B_rt_overall_cv"]).fillna(0.5)
+            stability_parts.append(0.3 * cv_normalized)
+        if "B_acc_overall_range" in feats.columns:
+            range_normalized = 1.0 - self._ensure_numeric(feats["B_acc_overall_range"]).fillna(0.5)
+            stability_parts.append(0.3 * range_normalized)
+        
+        if stability_parts:
+            feats["B_stability_score"] = sum(stability_parts)
         
         # Age interaction features
         if self._has(feats, ["Age_num", "B_overall_rt_mean"]):
