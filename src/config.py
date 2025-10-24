@@ -86,7 +86,7 @@ class Config:
             'remove_correlated_features': True,
             'use_ensemble': False,
             'ensemble_top_k': 3,
-            'use_smote_b': True,
+            'use_smote_b': False,
             'smote_sampling_strategy': 0.15
         }
         
