@@ -61,27 +61,27 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings
+        # Feature engineering settings - Phase 1-B: Stronger correlation removal
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.93
+            'correlation_threshold': 0.90  # Phase 1-B: 0.93 -> 0.90 for better redundancy removal
         }
         
-        # Training settings - Phase 1: Type B learning optimization
+        # Training settings - Phase 1-B: Balanced approach for Type B
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 150,  # Phase 1: 100 -> 150 for Type B
+            'early_stopping_rounds_b': 150,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.88,
+            'feature_selection_threshold_b': 0.85,  # Phase 1-B: 0.88 -> 0.85 to keep more features
             'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': False,
@@ -115,21 +115,21 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Phase 1: Scale pos weight optimization
+        # LightGBM hyperparameters for Type B - Phase 1-B: Balanced settings
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
             'num_leaves': 28,
             'max_depth': 8,
-            'min_child_samples': 28,
+            'min_child_samples': 32,  # Phase 1-B: 28 -> 32 for better generalization
             'min_child_weight': 0.001,
             'learning_rate': 0.025,
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 15.0,  # Phase 1: 12.0 -> 15.0 for better imbalance handling
+            'scale_pos_weight': 13.0,  # Phase 1-B: 15.0 -> 13.0 for balanced imbalance handling
             'is_unbalance': False,
             'reg_alpha': 0.8,
             'reg_lambda': 0.8,
