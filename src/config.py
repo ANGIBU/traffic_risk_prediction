@@ -71,7 +71,7 @@ class Config:
             'correlation_threshold': 0.93
         }
         
-        # Training settings - Phase 2-A: Calibration optimization
+        # Training settings - Phase 2-B: Type A hyperparameter tuning
         self.training = {
             'n_splits': 5,
             'random_state': 42,
@@ -83,8 +83,8 @@ class Config:
             'feature_selection_threshold': 0.90,
             'feature_selection_threshold_b': 0.88,
             'use_calibration': True,
-            'calibration_method': 'auto',  # 'auto', 'isotonic', 'platt', 'temperature'
-            'calibration_test_all': True,  # Test all methods and choose best
+            'calibration_method': 'auto',
+            'calibration_test_all': True,
             'remove_correlated_features': True,
             'use_ensemble': False,
             'ensemble_top_k': 3,
@@ -92,14 +92,14 @@ class Config:
             'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #5 settings
+        # LightGBM hyperparameters for Type A - Phase 2-B: Tuned for stability
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 19,
+            'num_leaves': 17,  # Phase 2-B: 19 -> 17 (simpler trees)
             'max_depth': 6,
-            'min_child_samples': 35,
+            'min_child_samples': 38,  # Phase 2-B: 35 -> 38 (prevent overfitting)
             'min_child_weight': 0.001,
             'learning_rate': 0.02,
             'n_estimators': 2000,
@@ -108,8 +108,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 1.2,
-            'reg_lambda': 1.2,
+            'reg_alpha': 1.3,  # Phase 2-B: 1.2 -> 1.3 (stronger L1)
+            'reg_lambda': 1.3,  # Phase 2-B: 1.2 -> 1.3 (stronger L2)
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -117,7 +117,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #5 settings
+        # LightGBM hyperparameters for Type B - Experiment #5 settings (unchanged)
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',

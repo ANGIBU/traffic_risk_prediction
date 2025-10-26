@@ -87,7 +87,7 @@ class FeatureEngineer:
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A with domain knowledge.
-        Phase 1-C: Added 5 carefully selected Type A features for safe improvement.
+        Experiment #5 version - stable baseline without Phase 1-C features.
         
         Args:
             df: Preprocessed type A data
@@ -204,103 +204,6 @@ class FeatureEngineer:
         if self._has(feats, ["Age_num", "A_overall_consistency"]):
             feats["Age_consistency_interaction"] = self._safe_multiply(feats["Age_num"], feats["A_overall_consistency"])
         
-        # ========================================
-        # PHASE 1-C: 5 CAREFULLY SELECTED TYPE A FEATURES
-        # Focus on safe improvement through Type A enhancement
-        # ========================================
-        
-        # 1. A_rt_stability_ratio: Overall RT stability using median/mean ratio
-        # Robust measure of RT consistency across all tests
-        rt_median_cols = [c for c in feats.columns if c.endswith('_rt_median') and c.startswith('A')]
-        if len(rt_mean_cols) > 0 and len(rt_median_cols) > 0:
-            rt_mean_overall = feats[rt_mean_cols].apply(self._ensure_numeric).mean(axis=1)
-            rt_median_overall = feats[rt_median_cols].apply(self._ensure_numeric).mean(axis=1)
-            feats["A_rt_stability_ratio"] = self._safe_div(rt_median_overall, rt_mean_overall, eps)
-        
-        # 2. A_performance_consistency: Cross-test performance consistency score
-        # Measures how consistent performance is across different cognitive tests
-        if self._has(feats, ["A1_resp_rate", "A2_resp_rate", "A4_acc_rate"]):
-            a1_resp = self._ensure_numeric(feats["A1_resp_rate"])
-            a2_resp = self._ensure_numeric(feats["A2_resp_rate"])
-            a4_acc = self._ensure_numeric(feats["A4_acc_rate"])
-            
-            # Normalize scores to same scale
-            perf_df = pd.DataFrame({
-                'a1': a1_resp,
-                'a2': a2_resp,
-                'a4': a4_acc
-            })
-            perf_std = perf_df.std(axis=1)
-            perf_mean = perf_df.mean(axis=1)
-            feats["A_performance_consistency"] = 1.0 - self._safe_div(perf_std, perf_mean, eps)
-        
-        # 3. A1_A3_rt_correlation_proxy: Pattern similarity between attention and visual search
-        # Higher values indicate consistent cognitive processing style
-        if self._has(feats, ["A1_rt_mean", "A1_rt_std", "A3_rt_mean", "A3_rt_std"]):
-            a1_cv = self._safe_div(
-                self._ensure_numeric(feats["A1_rt_std"]),
-                self._ensure_numeric(feats["A1_rt_mean"]),
-                eps
-            )
-            a3_cv = self._safe_div(
-                self._ensure_numeric(feats["A3_rt_std"]),
-                self._ensure_numeric(feats["A3_rt_mean"]),
-                eps
-            )
-            # Similarity measure: inverse of absolute difference
-            feats["A1_A3_rt_correlation_proxy"] = 1.0 - (a1_cv - a3_cv).abs()
-        
-        # 4. A_stroop_efficiency: Stroop test efficiency index
-        # Combines accuracy and speed for Stroop interference task
-        if self._has(feats, ["A4_acc_rate", "A4_rt_mean", "A4_stroop_diff"]):
-            a4_acc = self._ensure_numeric(feats["A4_acc_rate"])
-            a4_rt = self._ensure_numeric(feats["A4_rt_mean"])
-            a4_stroop = self._ensure_numeric(feats["A4_stroop_diff"])
-            
-            # Efficiency = accuracy / (RT + stroop_cost)
-            # Normalized stroop cost
-            stroop_cost_norm = self._safe_div(a4_stroop, a4_rt, eps)
-            feats["A_stroop_efficiency"] = self._safe_div(
-                a4_acc,
-                1.0 + stroop_cost_norm.abs(),
-                eps
-            )
-        
-        # 5. A_overall_risk_score: Composite risk indicator for Type A
-        # Combines multiple risk factors with domain knowledge weights
-        risk_components = []
-        
-        # Low accuracy component (30%)
-        if "A_overall_acc" in feats.columns:
-            acc_risk = 1.0 - self._ensure_numeric(feats["A_overall_acc"]).fillna(0.5)
-            risk_components.append(0.3 * acc_risk)
-        
-        # High RT variability component (25%)
-        if self._has(feats, ["A_overall_rt_std", "A_overall_rt_mean"]):
-            rt_cv = self._safe_div(
-                self._ensure_numeric(feats["A_overall_rt_std"]),
-                self._ensure_numeric(feats["A_overall_rt_mean"]),
-                eps
-            )
-            risk_components.append(0.25 * self._ensure_numeric(rt_cv).fillna(0))
-        
-        # Low consistency component (25%)
-        if "A_overall_consistency" in feats.columns:
-            cons_risk = 1.0 - self._ensure_numeric(feats["A_overall_consistency"]).fillna(0.5)
-            risk_components.append(0.25 * cons_risk)
-        
-        # Stroop interference component (20%)
-        if "A4_stroop_gap_abs" in feats.columns and "A4_rt_mean" in feats.columns:
-            stroop_risk = self._safe_div(
-                self._ensure_numeric(feats["A4_stroop_gap_abs"]),
-                self._ensure_numeric(feats["A4_rt_mean"]),
-                eps
-            )
-            risk_components.append(0.2 * self._ensure_numeric(stroop_risk).fillna(0))
-        
-        if risk_components:
-            feats["A_overall_risk_score"] = sum(risk_components)
-        
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test A: {feats.shape}")
         return feats
@@ -308,7 +211,7 @@ class FeatureEngineer:
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B with domain knowledge and Type B specific patterns.
-        Phase 1-C: Keep existing features without modifications.
+        Experiment #5 version - unchanged from baseline.
         
         Args:
             df: Preprocessed type B data
