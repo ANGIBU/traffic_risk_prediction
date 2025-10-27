@@ -61,27 +61,27 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings - Phase 1: correlation threshold relaxation
+        # Feature engineering settings - Exp #13: minimal correlation relaxation
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.95  # Relaxed from 0.93 to 0.95
+            'correlation_threshold': 0.94  # Minimal relaxation from 0.93 to 0.94
         }
         
-        # Training settings - Phase 1: feature selection and early stopping adjustment
+        # Training settings - Exp #13: restore stability with calibration blending
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 75,  # Increased from 50 to 75 for Type A
-            'early_stopping_rounds_b': 150,  # Increased from 100 to 150 for Type B
+            'early_stopping_rounds': 50,  # Restore to Exp #11 setting
+            'early_stopping_rounds_b': 100,  # Restore to Exp #11 setting
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.92,  # Increased from 0.90 to 0.92 for Type A
-            'feature_selection_threshold_b': 0.90,  # Increased from 0.88 to 0.90 for Type B
+            'feature_selection_threshold': 0.90,  # Restore to Exp #11 setting
+            'feature_selection_threshold_b': 0.88,  # Restore to Exp #11 setting
             'use_calibration': True,
             'calibration_out_of_bounds': 'clip',  # Keep as 'clip' (extrapolate not supported)
             'calibration_blend_weight': 0.85,  # 85% calibrated + 15% original

@@ -370,7 +370,7 @@ def main():
     
     logger = setup_logging()
     logger.info("="*60)
-    logger.info("Starting training pipeline - Experiment #12")
+    logger.info("Starting training pipeline - Experiment #13")
     logger.info("="*60)
     
     try:
