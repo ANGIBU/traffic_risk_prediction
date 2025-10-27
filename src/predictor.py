@@ -1,5 +1,5 @@
 # src/predictor.py
-# Model inference engine with batch processing
+# Model inference engine with batch processing and ensemble support
 
 import joblib
 import numpy as np
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class Predictor:
     """
-    Model inference engine.
+    Model inference engine with ensemble support.
     
     Handles model loading, batch prediction, and feature alignment
     for optimized inference performance. Supports both single models
@@ -37,6 +37,7 @@ class Predictor:
         self.feature_names_b = None
         self.use_calibration = config.training.get('use_calibration', False)
         self.calibration_blend_weight = config.training.get('calibration_blend_weight', 0.85)
+        self.use_ensemble = config.training.get('use_ensemble', False)
         
         # Drop columns that should not be used as features
         self.drop_cols = ["Test_id", "Test", "PrimaryKey", "Age", "TestDate"]
@@ -48,24 +49,54 @@ class Predictor:
     
     def _load_models(self) -> None:
         """Load trained models from disk."""
-        model_a_path = self.config.paths['model']
-        model_b_path = self.config.paths['model_b']
-        
-        # Load model A
-        if model_a_path.exists():
-            logger.info(f"Loading model A from {model_a_path}")
-            self.model_a = joblib.load(model_a_path)
-            logger.info("Model A loaded successfully")
+        if self.use_ensemble:
+            # Load ensemble models
+            ensemble_dir_a = self.config.paths['ensemble_models_a']
+            ensemble_dir_b = self.config.paths['ensemble_models_b']
+            
+            # Load Type A ensemble
+            if ensemble_dir_a.exists():
+                logger.info(f"Loading ensemble models A from {ensemble_dir_a}")
+                model_files_a = sorted(ensemble_dir_a.glob('model_A_*.pkl'))
+                if model_files_a:
+                    self.model_a = [joblib.load(f) for f in model_files_a]
+                    logger.info(f"Loaded {len(self.model_a)} ensemble models for Type A")
+                else:
+                    logger.warning(f"No ensemble models found for Type A")
+            else:
+                logger.warning(f"Ensemble directory A not found: {ensemble_dir_a}")
+            
+            # Load Type B ensemble
+            if ensemble_dir_b.exists():
+                logger.info(f"Loading ensemble models B from {ensemble_dir_b}")
+                model_files_b = sorted(ensemble_dir_b.glob('model_B_*.pkl'))
+                if model_files_b:
+                    self.model_b = [joblib.load(f) for f in model_files_b]
+                    logger.info(f"Loaded {len(self.model_b)} ensemble models for Type B")
+                else:
+                    logger.warning(f"No ensemble models found for Type B")
+            else:
+                logger.warning(f"Ensemble directory B not found: {ensemble_dir_b}")
         else:
-            logger.warning(f"Model A not found at {model_a_path}")
-        
-        # Load model B
-        if model_b_path.exists():
-            logger.info(f"Loading model B from {model_b_path}")
-            self.model_b = joblib.load(model_b_path)
-            logger.info("Model B loaded successfully")
-        else:
-            logger.warning(f"Model B not found at {model_b_path}")
+            # Load single models
+            model_a_path = self.config.paths['model']
+            model_b_path = self.config.paths['model_b']
+            
+            # Load model A
+            if model_a_path.exists():
+                logger.info(f"Loading model A from {model_a_path}")
+                self.model_a = joblib.load(model_a_path)
+                logger.info("Model A loaded successfully")
+            else:
+                logger.warning(f"Model A not found at {model_a_path}")
+            
+            # Load model B
+            if model_b_path.exists():
+                logger.info(f"Loading model B from {model_b_path}")
+                self.model_b = joblib.load(model_b_path)
+                logger.info("Model B loaded successfully")
+            else:
+                logger.warning(f"Model B not found at {model_b_path}")
     
     def _load_calibrators(self) -> None:
         """Load calibrators from disk if available."""
@@ -101,8 +132,11 @@ class Predictor:
             with open(feature_names_a_path, 'r') as f:
                 self.feature_names_a = [line.strip() for line in f if line.strip()]
             logger.info(f"Model A expects {len(self.feature_names_a)} features")
-        elif self.model_a and hasattr(self.model_a, 'feature_name_'):
-            self.feature_names_a = list(self.model_a.feature_name_())
+        elif self.model_a:
+            if self.use_ensemble and isinstance(self.model_a, list):
+                self.feature_names_a = list(self.model_a[0].feature_name_())
+            elif hasattr(self.model_a, 'feature_name_'):
+                self.feature_names_a = list(self.model_a.feature_name_())
             logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
         else:
             logger.warning("Feature names A not found")
@@ -113,8 +147,11 @@ class Predictor:
             with open(feature_names_b_path, 'r') as f:
                 self.feature_names_b = [line.strip() for line in f if line.strip()]
             logger.info(f"Model B expects {len(self.feature_names_b)} features")
-        elif self.model_b and hasattr(self.model_b, 'feature_name_'):
-            self.feature_names_b = list(self.model_b.feature_name_())
+        elif self.model_b:
+            if self.use_ensemble and isinstance(self.model_b, list):
+                self.feature_names_b = list(self.model_b[0].feature_name_())
+            elif hasattr(self.model_b, 'feature_name_'):
+                self.feature_names_b = list(self.model_b.feature_name_())
             logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
         else:
             logger.warning("Feature names B not found")
@@ -136,13 +173,12 @@ class Predictor:
         if len(df_a) > 0 and self.model_a is not None:
             logger.info(f"Predicting for {len(df_a)} type A samples")
             X_a = self._align_to_model(df_a, self.model_a, self.feature_names_a, 'A')
-            pred_a = self._batch_predict(self.model_a, X_a)
+            pred_a = self._batch_predict(self.model_a, X_a, 'A')
             
             # Apply calibration with blending if available
             if self.use_calibration and self.calibrator_a is not None:
                 logger.info("Applying calibration to Type A predictions")
                 pred_a_calibrated = self.calibrator_a.transform(pred_a)
-                # Blend: blend_weight * calibrated + (1 - blend_weight) * original
                 pred_a = self.calibration_blend_weight * pred_a_calibrated + (1 - self.calibration_blend_weight) * pred_a
                 pred_a = np.clip(pred_a, 0.0, 1.0)
             
@@ -155,13 +191,12 @@ class Predictor:
         if len(df_b) > 0 and self.model_b is not None:
             logger.info(f"Predicting for {len(df_b)} type B samples")
             X_b = self._align_to_model(df_b, self.model_b, self.feature_names_b, 'B')
-            pred_b = self._batch_predict(self.model_b, X_b)
+            pred_b = self._batch_predict(self.model_b, X_b, 'B')
             
             # Apply calibration with blending if available
             if self.use_calibration and self.calibrator_b is not None:
                 logger.info("Applying calibration to Type B predictions")
                 pred_b_calibrated = self.calibrator_b.transform(pred_b)
-                # Blend: blend_weight * calibrated + (1 - blend_weight) * original
                 pred_b = self.calibration_blend_weight * pred_b_calibrated + (1 - self.calibration_blend_weight) * pred_b
                 pred_b = np.clip(pred_b, 0.0, 1.0)
             
@@ -232,13 +267,14 @@ class Predictor:
         
         return X
     
-    def _batch_predict(self, model: object, X: pd.DataFrame) -> np.ndarray:
+    def _batch_predict(self, model: object, X: pd.DataFrame, test_type: str) -> np.ndarray:
         """
         Generate predictions with batch processing.
         
         Args:
-            model: Trained model
+            model: Trained model (single or list for ensemble)
             X: Feature matrix
+            test_type: 'A' or 'B' for logging
             
         Returns:
             np.ndarray: Predicted probabilities (0-1)
@@ -250,20 +286,43 @@ class Predictor:
         n_batches = (n_samples + batch_size - 1) // batch_size
         logger.info(f"Processing {n_samples} samples in {n_batches} batches")
         
-        for i in range(0, n_samples, batch_size):
-            end_idx = min(i + batch_size, n_samples)
-            batch = X.iloc[i:end_idx]
-            
-            # Single model prediction
-            if hasattr(model, 'predict_proba'):
-                batch_pred = model.predict_proba(batch)[:, 1]
-            else:
-                batch_pred = model.predict(batch)
-            
-            predictions[i:end_idx] = batch_pred
-            
-            if (i // batch_size + 1) % 5 == 0:
-                logger.info(f"Processed batch {i // batch_size + 1}/{n_batches}")
+        # Ensemble prediction
+        if isinstance(model, list):
+            logger.info(f"Using ensemble with {len(model)} models for type {test_type}")
+            for i in range(0, n_samples, batch_size):
+                end_idx = min(i + batch_size, n_samples)
+                batch = X.iloc[i:end_idx]
+                
+                # Average predictions from all models
+                batch_preds = []
+                for m in model:
+                    if hasattr(m, 'predict_proba'):
+                        pred = m.predict_proba(batch)[:, 1]
+                    else:
+                        pred = m.predict(batch)
+                    batch_preds.append(pred)
+                
+                # Average ensemble predictions
+                predictions[i:end_idx] = np.mean(batch_preds, axis=0)
+                
+                if (i // batch_size + 1) % 5 == 0:
+                    logger.info(f"Processed batch {i // batch_size + 1}/{n_batches}")
+        
+        # Single model prediction
+        else:
+            for i in range(0, n_samples, batch_size):
+                end_idx = min(i + batch_size, n_samples)
+                batch = X.iloc[i:end_idx]
+                
+                if hasattr(model, 'predict_proba'):
+                    batch_pred = model.predict_proba(batch)[:, 1]
+                else:
+                    batch_pred = model.predict(batch)
+                
+                predictions[i:end_idx] = batch_pred
+                
+                if (i // batch_size + 1) % 5 == 0:
+                    logger.info(f"Processed batch {i // batch_size + 1}/{n_batches}")
         
         # Clip to valid range
         predictions = np.clip(predictions, 0.0, 1.0)
