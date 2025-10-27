@@ -1,6 +1,5 @@
 # train.py
 # Model training script with cross-validation and calibration
-# Current:  0.15199
 
 import sys
 import logging
@@ -117,7 +116,7 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
         y_val: Validation labels
         params: Model hyperparameters
         early_stopping_rounds: Early stopping rounds
-        test_type: 'A' or 'B'
+        test_type: 'A' or 'B' for logging
         
     Returns:
         Trained model
@@ -195,7 +194,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         test_type: 'A' or 'B'
         
     Returns:
-        tuple: (ensemble_models, cv_scores, oof_predictions, selected_features, calibrator)
+        tuple: (best_model, cv_scores, oof_predictions, selected_features, calibrator)
     """
     n_splits = config.training['n_splits']
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -213,9 +212,9 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.85)
+            threshold = config.training.get('feature_selection_threshold_b', 0.90)
         else:
-            threshold = config.training.get('feature_selection_threshold', 0.90)
+            threshold = config.training.get('feature_selection_threshold', 0.92)
         
         selected_features = select_features(X, y, params, threshold=threshold)
         X = X[selected_features]
@@ -225,9 +224,9 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 150)
     else:
-        early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
+        early_stopping_rounds = config.training.get('early_stopping_rounds', 75)
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
@@ -299,17 +298,24 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Use best model OOF for calibration
     oof_for_calibration = oof_preds
     
-    # Calibrator (optional)
+    # Calibrator with out_of_bounds='extrapolate' and blending
     calibrator = None
     if config.training['use_calibration']:
         logger.info("Training probability calibrator...")
-        calibrator = IsotonicRegression(out_of_bounds='clip')
+        out_of_bounds = config.training.get('calibration_out_of_bounds', 'clip')
+        calibrator = IsotonicRegression(out_of_bounds=out_of_bounds)
         calibrator.fit(oof_for_calibration, y)
         
+        # Apply blending: blend_weight * calibrated + (1 - blend_weight) * original
+        blend_weight = config.training.get('calibration_blend_weight', 0.85)
         calibrated_preds = calibrator.transform(oof_for_calibration)
-        calibrated_metrics = calculate_combined_score(y, calibrated_preds)
+        blended_preds = blend_weight * calibrated_preds + (1 - blend_weight) * oof_for_calibration
+        blended_preds = np.clip(blended_preds, 0.0, 1.0)
         
-        logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
+        calibrated_metrics = calculate_combined_score(y, blended_preds)
+        
+        logger.info(f"After calibration (out_of_bounds={out_of_bounds}, blend={blend_weight}) - "
+                   f"AUC: {calibrated_metrics['auc']:.6f}, "
                    f"Brier: {calibrated_metrics['brier']:.6f}, "
                    f"ECE: {calibrated_metrics['ece']:.6f}, "
                    f"Combined: {calibrated_metrics['combined']:.6f}")
@@ -364,7 +370,7 @@ def main():
     
     logger = setup_logging()
     logger.info("="*60)
-    logger.info("Starting training pipeline")
+    logger.info("Starting training pipeline - Experiment #12")
     logger.info("="*60)
     
     try:
@@ -447,7 +453,7 @@ def main():
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model with SMOTE")
+        logger.info("STEP 5: Training Type B model")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
@@ -477,7 +483,7 @@ def main():
         logger.info(f"Feature names B saved to {feature_names_path_b}")
         
         logger.info("="*60)
-        logger.info("TRAINING COMPLETE")
+        logger.info("TRAINING COMPLETE - Experiment #12")
         logger.info("="*60)
         
         metrics_df_a = pd.DataFrame(cv_metrics_a)

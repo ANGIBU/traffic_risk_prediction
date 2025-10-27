@@ -61,28 +61,30 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings
+        # Feature engineering settings - Phase 1: correlation threshold relaxation
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.93
+            'correlation_threshold': 0.95  # Relaxed from 0.93 to 0.95
         }
         
-        # Training settings
+        # Training settings - Phase 1: feature selection and early stopping adjustment
         self.training = {
             'n_splits': 5,
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 100,
+            'early_stopping_rounds': 75,  # Increased from 50 to 75 for Type A
+            'early_stopping_rounds_b': 150,  # Increased from 100 to 150 for Type B
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.88,
+            'feature_selection_threshold': 0.92,  # Increased from 0.90 to 0.92 for Type A
+            'feature_selection_threshold_b': 0.90,  # Increased from 0.88 to 0.90 for Type B
             'use_calibration': True,
+            'calibration_out_of_bounds': 'extrapolate',  # Changed from 'clip' to 'extrapolate'
+            'calibration_blend_weight': 0.85,  # 85% calibrated + 15% original
             'remove_correlated_features': True,
             'use_ensemble': False,
             'ensemble_top_k': 3,
@@ -90,14 +92,14 @@ class Config:
             'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #8 Recovery
+        # LightGBM hyperparameters for Type A - Experiment #5 settings
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 19,
+            'num_leaves': 17,
             'max_depth': 6,
-            'min_child_samples': 35,
+            'min_child_samples': 38,
             'min_child_weight': 0.001,
             'learning_rate': 0.02,
             'n_estimators': 2000,
@@ -106,8 +108,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 1.2,
-            'reg_lambda': 1.2,
+            'reg_alpha': 1.3,
+            'reg_lambda': 1.3,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -115,7 +117,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #8 with SMOTE
+        # LightGBM hyperparameters for Type B - Experiment #5 settings
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',

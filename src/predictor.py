@@ -36,6 +36,7 @@ class Predictor:
         self.feature_names_a = None
         self.feature_names_b = None
         self.use_calibration = config.training.get('use_calibration', False)
+        self.calibration_blend_weight = config.training.get('calibration_blend_weight', 0.85)
         
         # Drop columns that should not be used as features
         self.drop_cols = ["Test_id", "Test", "PrimaryKey", "Age", "TestDate"]
@@ -137,10 +138,12 @@ class Predictor:
             X_a = self._align_to_model(df_a, self.model_a, self.feature_names_a, 'A')
             pred_a = self._batch_predict(self.model_a, X_a)
             
-            # Apply calibration if available
+            # Apply calibration with blending if available
             if self.use_calibration and self.calibrator_a is not None:
                 logger.info("Applying calibration to Type A predictions")
-                pred_a = self.calibrator_a.transform(pred_a)
+                pred_a_calibrated = self.calibrator_a.transform(pred_a)
+                # Blend: blend_weight * calibrated + (1 - blend_weight) * original
+                pred_a = self.calibration_blend_weight * pred_a_calibrated + (1 - self.calibration_blend_weight) * pred_a
                 pred_a = np.clip(pred_a, 0.0, 1.0)
             
             predictions['A'] = pred_a
@@ -154,10 +157,12 @@ class Predictor:
             X_b = self._align_to_model(df_b, self.model_b, self.feature_names_b, 'B')
             pred_b = self._batch_predict(self.model_b, X_b)
             
-            # Apply calibration if available
+            # Apply calibration with blending if available
             if self.use_calibration and self.calibrator_b is not None:
                 logger.info("Applying calibration to Type B predictions")
-                pred_b = self.calibrator_b.transform(pred_b)
+                pred_b_calibrated = self.calibrator_b.transform(pred_b)
+                # Blend: blend_weight * calibrated + (1 - blend_weight) * original
+                pred_b = self.calibration_blend_weight * pred_b_calibrated + (1 - self.calibration_blend_weight) * pred_b
                 pred_b = np.clip(pred_b, 0.0, 1.0)
             
             predictions['B'] = pred_b
