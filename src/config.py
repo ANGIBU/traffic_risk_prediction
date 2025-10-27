@@ -83,7 +83,7 @@ class Config:
             'feature_selection_threshold': 0.92,  # Increased from 0.90 to 0.92 for Type A
             'feature_selection_threshold_b': 0.90,  # Increased from 0.88 to 0.90 for Type B
             'use_calibration': True,
-            'calibration_out_of_bounds': 'extrapolate',  # Changed from 'clip' to 'extrapolate'
+            'calibration_out_of_bounds': 'clip',  # Keep as 'clip' (extrapolate not supported)
             'calibration_blend_weight': 0.85,  # 85% calibrated + 15% original
             'remove_correlated_features': True,
             'use_ensemble': False,
