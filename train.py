@@ -1,4 +1,4 @@
-# train.py 123
+# train.py
 # Model training script with cross-validation and calibration
 
 import sys
