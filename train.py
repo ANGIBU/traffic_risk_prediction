@@ -1,5 +1,5 @@
-# train.py
-# Model training script with multiple calibration methods
+# train.py 123
+# Model training script with cross-validation and calibration
 
 import sys
 import logging
@@ -15,10 +15,8 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.feature_selection import SelectFromModel
 from sklearn.isotonic import IsotonicRegression
-from sklearn.calibration import CalibratedClassifierCV
 from imblearn.over_sampling import SMOTE
 import lightgbm as lgb
-from scipy.special import expit, logit
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -78,140 +76,7 @@ def calculate_combined_score(y_true, y_pred):
         'combined': combined
     }
 
-class TemperatureScaling:
-    """
-    Temperature scaling calibration.
-    Simple but effective method.
-    """
-    
-    def __init__(self):
-        self.temperature = 1.0
-        
-    def fit(self, probabilities, y_true):
-        """
-        Find optimal temperature.
-        
-        Args:
-            probabilities: Predicted probabilities
-            y_true: True labels
-        """
-        from scipy.optimize import minimize_scalar
-        
-        # Convert probabilities to logits
-        eps = 1e-7
-        probs_clipped = np.clip(probabilities, eps, 1 - eps)
-        logits = logit(probs_clipped)
-        
-        def temperature_ece(temp):
-            scaled_probs = expit(logits / temp)
-            return calculate_ece(y_true, scaled_probs)
-        
-        # Find optimal temperature
-        result = minimize_scalar(temperature_ece, bounds=(0.1, 10.0), method='bounded')
-        self.temperature = result.x
-        
-        return self
-    
-    def transform(self, probabilities):
-        """
-        Apply temperature scaling.
-        
-        Args:
-            probabilities: Predicted probabilities
-            
-        Returns:
-            np.ndarray: Calibrated probabilities
-        """
-        eps = 1e-7
-        probs_clipped = np.clip(probabilities, eps, 1 - eps)
-        logits = logit(probs_clipped)
-        calibrated = expit(logits / self.temperature)
-        return np.clip(calibrated, 0.0, 1.0)
-
-def test_calibration_methods(oof_predictions, y_true, method='auto'):
-    """
-    Test multiple calibration methods and return the best.
-    
-    Args:
-        oof_predictions: Out-of-fold predictions
-        y_true: True labels
-        method: 'auto', 'isotonic', 'platt', 'temperature'
-        
-    Returns:
-        tuple: (best_calibrator, best_method, results)
-    """
-    logger = logging.getLogger(__name__)
-    
-    results = {}
-    calibrators = {}
-    
-    # Original (no calibration)
-    orig_metrics = calculate_combined_score(y_true, oof_predictions)
-    results['original'] = orig_metrics
-    logger.info(f"Original - Combined: {orig_metrics['combined']:.6f}, "
-               f"AUC: {orig_metrics['auc']:.6f}, "
-               f"Brier: {orig_metrics['brier']:.6f}, "
-               f"ECE: {orig_metrics['ece']:.6f}")
-    
-    if method == 'auto' or method == 'isotonic':
-        # Isotonic Regression
-        try:
-            iso = IsotonicRegression(out_of_bounds='clip')
-            iso.fit(oof_predictions, y_true)
-            iso_preds = iso.transform(oof_predictions)
-            iso_metrics = calculate_combined_score(y_true, iso_preds)
-            results['isotonic'] = iso_metrics
-            calibrators['isotonic'] = iso
-            logger.info(f"Isotonic - Combined: {iso_metrics['combined']:.6f}, "
-                       f"AUC: {iso_metrics['auc']:.6f}, "
-                       f"Brier: {iso_metrics['brier']:.6f}, "
-                       f"ECE: {iso_metrics['ece']:.6f}")
-        except Exception as e:
-            logger.warning(f"Isotonic calibration failed: {e}")
-    
-    if method == 'auto' or method == 'platt':
-        # Platt Scaling
-        try:
-            from sklearn.linear_model import LogisticRegression
-            
-            platt = LogisticRegression()
-            platt.fit(oof_predictions.reshape(-1, 1), y_true)
-            platt_preds = platt.predict_proba(oof_predictions.reshape(-1, 1))[:, 1]
-            platt_metrics = calculate_combined_score(y_true, platt_preds)
-            results['platt'] = platt_metrics
-            calibrators['platt'] = platt
-            logger.info(f"Platt - Combined: {platt_metrics['combined']:.6f}, "
-                       f"AUC: {platt_metrics['auc']:.6f}, "
-                       f"Brier: {platt_metrics['brier']:.6f}, "
-                       f"ECE: {platt_metrics['ece']:.6f}")
-        except Exception as e:
-            logger.warning(f"Platt calibration failed: {e}")
-    
-    if method == 'auto' or method == 'temperature':
-        # Temperature Scaling
-        try:
-            temp = TemperatureScaling()
-            temp.fit(oof_predictions, y_true)
-            temp_preds = temp.transform(oof_predictions)
-            temp_metrics = calculate_combined_score(y_true, temp_preds)
-            results['temperature'] = temp_metrics
-            calibrators['temperature'] = temp
-            logger.info(f"Temperature (T={temp.temperature:.3f}) - Combined: {temp_metrics['combined']:.6f}, "
-                       f"AUC: {temp_metrics['auc']:.6f}, "
-                       f"Brier: {temp_metrics['brier']:.6f}, "
-                       f"ECE: {temp_metrics['ece']:.6f}")
-        except Exception as e:
-            logger.warning(f"Temperature calibration failed: {e}")
-    
-    # Select best method based on combined score
-    best_method = min(results.keys(), key=lambda k: results[k]['combined'])
-    best_calibrator = calibrators.get(best_method, None)
-    
-    logger.info(f"Best calibration method: {best_method} (Combined: {results[best_method]['combined']:.6f})")
-    
-    return best_calibrator, best_method, results
-
-def remove_correlated_features(X, threshold=0.93):
+def remove_correlated_features(X, threshold=0.95):
     """
     Remove highly correlated features.
     
@@ -319,7 +184,7 @@ def select_features(X, y, params, threshold=0.90):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation.
+    Perform stratified k-fold cross-validation with ensemble capability.
     
     Args:
         X: Features
@@ -329,7 +194,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         test_type: 'A' or 'B'
         
     Returns:
-        tuple: (best_model, cv_scores, oof_predictions, selected_features, calibrator, calib_method)
+        tuple: (ensemble_models, cv_scores, oof_predictions, selected_features, calibrator)
     """
     n_splits = config.training['n_splits']
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -344,10 +209,10 @@ def cross_validate(X, y, params, config, test_type='A'):
         X = X[keep_features]
         logger.info(f"After correlation removal: {len(X.columns)} features")
     
-    # Feature selection
+    # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.88)
+            threshold = config.training.get('feature_selection_threshold_b', 0.85)
         else:
             threshold = config.training.get('feature_selection_threshold', 0.90)
         
@@ -357,7 +222,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     else:
         selected_features = X.columns.tolist()
     
-    # Early stopping rounds
+    # Early stopping rounds based on test type
     if test_type == 'B':
         early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
     else:
@@ -365,7 +230,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
-    # SMOTE for Type B
+    # SMOTE configuration for Type B
     use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
     if use_smote:
         smote_strategy = config.training.get('smote_sampling_strategy', 0.15)
@@ -430,33 +295,27 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger.info(f"Best model from fold {best_fold_idx + 1} "
                f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
-    # Calibration
-    calibrator = None
-    calib_method = 'none'
+    # Use best model OOF for calibration
+    oof_for_calibration = oof_preds
     
+    # Calibrator (optional)
+    calibrator = None
     if config.training['use_calibration']:
-        logger.info("Testing calibration methods...")
+        logger.info("Training probability calibrator...")
+        calibrator = IsotonicRegression(out_of_bounds='clip')
+        calibrator.fit(oof_for_calibration, y)
         
-        calib_method_setting = config.training.get('calibration_method', 'auto')
-        test_all = config.training.get('calibration_test_all', True)
+        calibrated_preds = calibrator.transform(oof_for_calibration)
+        calibrated_metrics = calculate_combined_score(y, calibrated_preds)
         
-        if test_all:
-            calibrator, calib_method, calib_results = test_calibration_methods(
-                oof_preds, y, method='auto'
-            )
-        else:
-            calibrator, calib_method, calib_results = test_calibration_methods(
-                oof_preds, y, method=calib_method_setting
-            )
-        
-        if calibrator is not None:
-            logger.info(f"Selected calibration: {calib_method}")
-        else:
-            logger.info("No calibration applied (original best)")
+        logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
+                   f"Brier: {calibrated_metrics['brier']:.6f}, "
+                   f"ECE: {calibrated_metrics['ece']:.6f}, "
+                   f"Combined: {calibrated_metrics['combined']:.6f}")
     else:
         logger.info("Calibration disabled")
     
-    return best_model, cv_metrics, oof_preds, selected_features, calibrator, calib_method
+    return best_model, cv_metrics, oof_preds, selected_features, calibrator
 
 def prepare_features(df, test_type='A'):
     """
@@ -498,14 +357,13 @@ def main():
         2. Preprocess by test type
         3. Generate features
         4. Train with cross-validation
-        5. Test calibration methods
-        6. Save models and calibrators
+        5. Save models and feature names
     """
     start_time = time.time()
     
     logger = setup_logging()
     logger.info("="*60)
-    logger.info("Starting training pipeline - Phase 2-A")
+    logger.info("Starting training pipeline")
     logger.info("="*60)
     
     try:
@@ -558,7 +416,7 @@ def main():
         logger.info(f"Featured B: {featured_b.shape}")
         
         logger.info("="*60)
-        logger.info("STEP 4: Training Type A model with calibration")
+        logger.info("STEP 4: Training Type A model")
         logger.info("="*60)
         
         X_a = prepare_features(featured_a, 'A')
@@ -566,7 +424,7 @@ def main():
         logger.info(f"Features A: {X_a.shape}")
         logger.info(f"Initial feature count: {len(X_a.columns)}")
         
-        best_model_a, cv_metrics_a, oof_preds_a, selected_features_a, calibrator_a, calib_method_a = cross_validate(
+        ensemble_models_a, cv_metrics_a, oof_preds_a, selected_features_a, calibrator_a = cross_validate(
             X_a, y_a, 
             config.lgbm_params_a,
             config,
@@ -575,20 +433,20 @@ def main():
         
         # Save model
         model_path_a = config.paths['model']
-        joblib.dump(best_model_a, model_path_a)
+        joblib.dump(ensemble_models_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
         
         if calibrator_a is not None:
             calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
             joblib.dump(calibrator_a, calibrator_path_a)
-            logger.info(f"Calibrator A ({calib_method_a}) saved to {calibrator_path_a}")
+            logger.info(f"Calibrator A saved to {calibrator_path_a}")
         
         feature_names_path_a = config.paths['feature_names_a']
         save_feature_names(selected_features_a, feature_names_path_a)
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model with calibration")
+        logger.info("STEP 5: Training Type B model with SMOTE")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
@@ -596,7 +454,7 @@ def main():
         logger.info(f"Features B: {X_b.shape}")
         logger.info(f"Initial feature count: {len(X_b.columns)}")
         
-        best_model_b, cv_metrics_b, oof_preds_b, selected_features_b, calibrator_b, calib_method_b = cross_validate(
+        ensemble_models_b, cv_metrics_b, oof_preds_b, selected_features_b, calibrator_b = cross_validate(
             X_b, y_b,
             config.lgbm_params_b,
             config,
@@ -605,29 +463,27 @@ def main():
         
         # Save model
         model_path_b = config.paths['model_b']
-        joblib.dump(best_model_b, model_path_b)
+        joblib.dump(ensemble_models_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
         
         if calibrator_b is not None:
             calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
             joblib.dump(calibrator_b, calibrator_path_b)
-            logger.info(f"Calibrator B ({calib_method_b}) saved to {calibrator_path_b}")
+            logger.info(f"Calibrator B saved to {calibrator_path_b}")
         
         feature_names_path_b = config.paths['feature_names_b']
         save_feature_names(selected_features_b, feature_names_path_b)
         logger.info(f"Feature names B saved to {feature_names_path_b}")
         
         logger.info("="*60)
-        logger.info("TRAINING COMPLETE - Phase 2-A")
+        logger.info("TRAINING COMPLETE")
         logger.info("="*60)
         
         metrics_df_a = pd.DataFrame(cv_metrics_a)
         metrics_df_b = pd.DataFrame(cv_metrics_b)
         
-        logger.info(f"Type A - Calibration: {calib_method_a}")
         logger.info(f"Type A - Combined Score: {metrics_df_a['combined'].mean():.6f} +/- {metrics_df_a['combined'].std():.6f}")
         logger.info(f"Type A - AUC: {metrics_df_a['auc'].mean():.6f} +/- {metrics_df_a['auc'].std():.6f}")
-        logger.info(f"Type B - Calibration: {calib_method_b}")
         logger.info(f"Type B - Combined Score: {metrics_df_b['combined'].mean():.6f} +/- {metrics_df_b['combined'].std():.6f}")
         logger.info(f"Type B - AUC: {metrics_df_b['auc'].mean():.6f} +/- {metrics_df_b['auc'].std():.6f}")
         
@@ -638,12 +494,12 @@ def main():
         # Feature importance logging
         feature_importance_a = pd.DataFrame({
             'feature': selected_features_a,
-            'importance': best_model_a.feature_importance(importance_type='gain')
+            'importance': ensemble_models_a.feature_importance(importance_type='gain')
         }).sort_values('importance', ascending=False)
         
         feature_importance_b = pd.DataFrame({
             'feature': selected_features_b,
-            'importance': best_model_b.feature_importance(importance_type='gain')
+            'importance': ensemble_models_b.feature_importance(importance_type='gain')
         }).sort_values('importance', ascending=False)
         
         logger.info("Top 15 features for Type A:")

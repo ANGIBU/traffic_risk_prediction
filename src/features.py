@@ -87,7 +87,7 @@ class FeatureEngineer:
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A with domain knowledge.
-        Experiment #5 version - stable baseline without Phase 1-C features.
+        Experiment #8 version - without additional 30 features.
         
         Args:
             df: Preprocessed type A data
@@ -211,7 +211,6 @@ class FeatureEngineer:
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B with domain knowledge and Type B specific patterns.
-        Experiment #5 version - unchanged from baseline.
         
         Args:
             df: Preprocessed type B data
@@ -316,7 +315,7 @@ class FeatureEngineer:
             b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
             feats["B3_B5_rt_gap"] = b5_rt - b3_rt
         
-        # Sequential test pattern (B1->B2->B3)
+        # Sequential test pattern (B1→B2→B3)
         if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
             b1_num = self._ensure_numeric(feats["B1_rt_mean"])
             b2_num = self._ensure_numeric(feats["B2_rt_mean"])
@@ -326,7 +325,7 @@ class FeatureEngineer:
                 'b1': b1_num, 'b2': b2_num, 'b3': b3_num
             }).std(axis=1)
         
-        # Sequential test pattern (B3->B4->B5)
+        # Sequential test pattern (B3→B4→B5)
         if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
             b3_num = self._ensure_numeric(feats["B3_rt_mean"])
             b4_num = self._ensure_numeric(feats["B4_rt_mean"])
