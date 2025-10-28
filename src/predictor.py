@@ -1,12 +1,12 @@
 # src/predictor.py
-# Model inference engine with batch processing
+# Model inference engine with batch processing and ensemble support
 
 import joblib
 import numpy as np
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple, Union
 import lightgbm as lgb
 
 logger = logging.getLogger(__name__)
@@ -100,9 +100,19 @@ class Predictor:
             with open(feature_names_a_path, 'r') as f:
                 self.feature_names_a = [line.strip() for line in f if line.strip()]
             logger.info(f"Model A expects {len(self.feature_names_a)} features")
-        elif self.model_a and hasattr(self.model_a, 'feature_name_'):
-            self.feature_names_a = list(self.model_a.feature_name_())
-            logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
+        elif self.model_a:
+            # Try to get from model if it's not an ensemble
+            if isinstance(self.model_a, tuple):
+                models, _ = self.model_a
+                if hasattr(models[0], 'feature_name_'):
+                    self.feature_names_a = list(models[0].feature_name_())
+            elif hasattr(self.model_a, 'feature_name_'):
+                self.feature_names_a = list(self.model_a.feature_name_())
+            
+            if self.feature_names_a:
+                logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
+            else:
+                logger.warning("Feature names A not found")
         else:
             logger.warning("Feature names A not found")
         
@@ -112,9 +122,18 @@ class Predictor:
             with open(feature_names_b_path, 'r') as f:
                 self.feature_names_b = [line.strip() for line in f if line.strip()]
             logger.info(f"Model B expects {len(self.feature_names_b)} features")
-        elif self.model_b and hasattr(self.model_b, 'feature_name_'):
-            self.feature_names_b = list(self.model_b.feature_name_())
-            logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
+        elif self.model_b:
+            if isinstance(self.model_b, tuple):
+                models, _ = self.model_b
+                if hasattr(models[0], 'feature_name_'):
+                    self.feature_names_b = list(models[0].feature_name_())
+            elif hasattr(self.model_b, 'feature_name_'):
+                self.feature_names_b = list(self.model_b.feature_name_())
+            
+            if self.feature_names_b:
+                logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
+            else:
+                logger.warning("Feature names B not found")
         else:
             logger.warning("Feature names B not found")
     
@@ -167,14 +186,14 @@ class Predictor:
         
         return predictions
     
-    def _align_to_model(self, df: pd.DataFrame, model: object, 
+    def _align_to_model(self, df: pd.DataFrame, model: Union[object, Tuple], 
                         feature_names: Optional[List[str]], test_type: str) -> pd.DataFrame:
         """
         Align features to model expectations.
         
         Args:
             df: DataFrame with features
-            model: Trained model (single or list for ensemble)
+            model: Trained model (single or tuple for ensemble)
             feature_names: Expected feature names
             test_type: 'A' or 'B' for logging
             
@@ -227,12 +246,13 @@ class Predictor:
         
         return X
     
-    def _batch_predict(self, model: object, X: pd.DataFrame) -> np.ndarray:
+    def _batch_predict(self, model: Union[object, Tuple], X: pd.DataFrame) -> np.ndarray:
         """
         Generate predictions with batch processing.
+        Supports both single models and ensemble models.
         
         Args:
-            model: Trained model
+            model: Trained model (single or tuple for ensemble)
             X: Feature matrix
             
         Returns:
@@ -245,15 +265,34 @@ class Predictor:
         n_batches = (n_samples + batch_size - 1) // batch_size
         logger.info(f"Processing {n_samples} samples in {n_batches} batches")
         
+        # Check if ensemble
+        is_ensemble = isinstance(model, tuple)
+        if is_ensemble:
+            models, weights = model
+            logger.info(f"Using ensemble of {len(models)} models")
+        
         for i in range(0, n_samples, batch_size):
             end_idx = min(i + batch_size, n_samples)
             batch = X.iloc[i:end_idx]
             
-            # Single model prediction
-            if hasattr(model, 'predict_proba'):
-                batch_pred = model.predict_proba(batch)[:, 1]
+            if is_ensemble:
+                # Ensemble prediction
+                batch_preds = []
+                for m in models:
+                    if hasattr(m, 'predict_proba'):
+                        pred = m.predict_proba(batch)[:, 1]
+                    else:
+                        pred = m.predict(batch)
+                    batch_preds.append(pred)
+                
+                # Weighted average
+                batch_pred = np.average(batch_preds, axis=0, weights=weights)
             else:
-                batch_pred = model.predict(batch)
+                # Single model prediction
+                if hasattr(model, 'predict_proba'):
+                    batch_pred = model.predict_proba(batch)[:, 1]
+                else:
+                    batch_pred = model.predict(batch)
             
             predictions[i:end_idx] = batch_pred
             

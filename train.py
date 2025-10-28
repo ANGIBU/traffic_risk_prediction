@@ -105,9 +105,10 @@ def remove_correlated_features(X, threshold=0.95):
     
     return features_to_keep
 
-def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50, test_type='A'):
+def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50, 
+                min_iterations=50, test_type='A'):
     """
-    Train single LightGBM model.
+    Train single LightGBM model with minimum iteration enforcement.
     
     Args:
         X_train: Training features
@@ -116,6 +117,7 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
         y_val: Validation labels
         params: Model hyperparameters
         early_stopping_rounds: Early stopping rounds
+        min_iterations: Minimum iterations before early stopping
         test_type: 'A' or 'B'
         
     Returns:
@@ -124,9 +126,22 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
     train_data = lgb.Dataset(X_train, label=y_train)
     val_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
     
+    # Train initial model with minimum iterations
     model = lgb.train(
         params,
         train_data,
+        num_boost_round=min_iterations,
+        valid_sets=[train_data, val_data],
+        valid_names=['train', 'valid'],
+        callbacks=[lgb.log_evaluation(period=50)]
+    )
+    
+    # Continue training with early stopping
+    model = lgb.train(
+        params,
+        train_data,
+        num_boost_round=params['n_estimators'] - min_iterations,
+        init_model=model,
         valid_sets=[train_data, val_data],
         valid_names=['train', 'valid'],
         callbacks=[
@@ -184,7 +199,7 @@ def select_features(X, y, params, threshold=0.90):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation with ensemble capability.
+    Perform stratified k-fold cross-validation with top-k ensemble.
     
     Args:
         X: Features
@@ -212,9 +227,9 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.85)
+            threshold = config.training.get('feature_selection_threshold_b', 0.90)
         else:
-            threshold = config.training.get('feature_selection_threshold', 0.90)
+            threshold = config.training.get('feature_selection_threshold', 0.92)
         
         selected_features = select_features(X, y, params, threshold=threshold)
         X = X[selected_features]
@@ -224,11 +239,14 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 150)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
+    min_iterations = config.training.get('min_early_stop_iterations', 50)
+    
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
+    logger.info(f"Enforcing min_iterations={min_iterations}")
     
     # SMOTE configuration for Type B
     use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
@@ -261,9 +279,10 @@ def cross_validate(X, y, params, config, test_type='A'):
             logger.info(f"After SMOTE: {len(X_train_resampled)} samples, pos rate: {y_train_resampled.mean():.4f}")
             
             model = train_model(X_train_resampled, y_train_resampled, X_val, y_val, 
-                              params, early_stopping_rounds, test_type)
+                              params, early_stopping_rounds, min_iterations, test_type)
         else:
-            model = train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds, test_type)
+            model = train_model(X_train, y_train, X_val, y_val, params, 
+                              early_stopping_rounds, min_iterations, test_type)
         
         models.append(model)
         
@@ -290,19 +309,62 @@ def cross_validate(X, y, params, config, test_type='A'):
         std = metrics_df[metric].std()
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
-    best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
-    best_model = models[best_fold_idx]
-    logger.info(f"Best model from fold {best_fold_idx + 1} "
-               f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
+    # Top-k ensemble selection
+    use_ensemble = config.training.get('use_ensemble', True)
+    ensemble_top_k = config.training.get('ensemble_top_k', 3)
     
-    # Use best model OOF for calibration
-    oof_for_calibration = oof_preds
+    if use_ensemble:
+        # Sort by combined score
+        fold_scores = [(i, m['combined']) for i, m in enumerate(cv_metrics)]
+        fold_scores.sort(key=lambda x: x[1])
+        
+        top_k_indices = [idx for idx, _ in fold_scores[:ensemble_top_k]]
+        top_k_models = [models[i] for i in top_k_indices]
+        
+        logger.info(f"Top-{ensemble_top_k} ensemble: Folds {[i+1 for i in top_k_indices]}")
+        for idx in top_k_indices:
+            logger.info(f"  Fold {idx+1}: Combined={cv_metrics[idx]['combined']:.6f}")
+        
+        # Generate ensemble OOF predictions
+        ensemble_oof = np.zeros(len(X))
+        for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+            if fold not in top_k_indices:
+                continue
+            X_val = X.iloc[val_idx]
+            val_pred = models[fold].predict(X_val, num_iteration=models[fold].best_iteration)
+            ensemble_oof[val_idx] = val_pred
+        
+        # Weight by inverse combined score
+        weights = [1.0 / cv_metrics[i]['combined'] for i in top_k_indices]
+        weight_sum = sum(weights)
+        weights = [w / weight_sum for w in weights]
+        
+        logger.info(f"Ensemble weights: {[f'{w:.3f}' for w in weights]}")
+        
+        return_models = (top_k_models, weights)
+        oof_for_calibration = ensemble_oof
+    else:
+        best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
+        best_model = models[best_fold_idx]
+        logger.info(f"Single model mode: Using fold {best_fold_idx + 1} "
+                   f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
+        return_models = best_model
+        oof_for_calibration = oof_preds
     
-    # Calibrator (optional)
+    # Calibrator with realistic bounds
     calibrator = None
     if config.training['use_calibration']:
         logger.info("Training probability calibrator...")
-        calibrator = IsotonicRegression(out_of_bounds='clip')
+        
+        y_min = config.training.get('calibration_y_min', 0.001)
+        y_max = config.training.get('calibration_y_max', 0.999)
+        
+        calibrator = IsotonicRegression(
+            out_of_bounds='clip',
+            increasing=True,
+            y_min=y_min,
+            y_max=y_max
+        )
         calibrator.fit(oof_for_calibration, y)
         
         calibrated_preds = calibrator.transform(oof_for_calibration)
@@ -312,10 +374,16 @@ def cross_validate(X, y, params, config, test_type='A'):
                    f"Brier: {calibrated_metrics['brier']:.6f}, "
                    f"ECE: {calibrated_metrics['ece']:.6f}, "
                    f"Combined: {calibrated_metrics['combined']:.6f}")
+        
+        # Validate calibration result
+        if calibrated_metrics['ece'] < 0.0001:
+            logger.warning("ECE extremely low - possible overfitting")
+        if calibrated_metrics['combined'] > oof_metrics['combined'] * 1.1:
+            logger.warning("Calibration degraded performance significantly")
     else:
         logger.info("Calibration disabled")
     
-    return best_model, cv_metrics, oof_preds, selected_features, calibrator
+    return return_models, cv_metrics, oof_preds, selected_features, calibrator
 
 def prepare_features(df, test_type='A'):
     """
@@ -446,7 +514,7 @@ def main():
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model with SMOTE")
+        logger.info("STEP 5: Training Type B model")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
@@ -492,15 +560,30 @@ def main():
         logger.info("="*60)
         
         # Feature importance logging
-        feature_importance_a = pd.DataFrame({
-            'feature': selected_features_a,
-            'importance': ensemble_models_a.feature_importance(importance_type='gain')
-        }).sort_values('importance', ascending=False)
+        if isinstance(ensemble_models_a, tuple):
+            models_a, weights_a = ensemble_models_a
+            # Use first model for feature importance
+            feature_importance_a = pd.DataFrame({
+                'feature': selected_features_a,
+                'importance': models_a[0].feature_importance(importance_type='gain')
+            }).sort_values('importance', ascending=False)
+        else:
+            feature_importance_a = pd.DataFrame({
+                'feature': selected_features_a,
+                'importance': ensemble_models_a.feature_importance(importance_type='gain')
+            }).sort_values('importance', ascending=False)
         
-        feature_importance_b = pd.DataFrame({
-            'feature': selected_features_b,
-            'importance': ensemble_models_b.feature_importance(importance_type='gain')
-        }).sort_values('importance', ascending=False)
+        if isinstance(ensemble_models_b, tuple):
+            models_b, weights_b = ensemble_models_b
+            feature_importance_b = pd.DataFrame({
+                'feature': selected_features_b,
+                'importance': models_b[0].feature_importance(importance_type='gain')
+            }).sort_values('importance', ascending=False)
+        else:
+            feature_importance_b = pd.DataFrame({
+                'feature': selected_features_b,
+                'importance': ensemble_models_b.feature_importance(importance_type='gain')
+            }).sort_values('importance', ascending=False)
         
         logger.info("Top 15 features for Type A:")
         for idx, row in feature_importance_a.head(15).iterrows():
