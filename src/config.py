@@ -68,7 +68,7 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.95  # Relaxed from 0.93
+            'correlation_threshold': 0.95
         }
         
         # Training settings
@@ -78,16 +78,13 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 150,  # Increased from 100
-            'min_early_stop_iterations': 50,  # Minimum iterations before early stopping
+            'early_stopping_rounds_b': 100,
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.92,  # Relaxed from 0.90
-            'feature_selection_threshold_b': 0.90,  # Relaxed from 0.88
-            'use_calibration': True,
-            'calibration_y_min': 0.001,  # Realistic minimum
-            'calibration_y_max': 0.999,  # Realistic maximum
+            'feature_selection_threshold': 0.92,
+            'feature_selection_threshold_b': 0.90,
+            'use_calibration': False,
             'remove_correlated_features': True,
-            'use_ensemble': True,  # Enable top-3 ensemble
+            'use_ensemble': True,
             'ensemble_top_k': 3,
             'use_smote_b': False,
             'smote_sampling_strategy': 0.15
@@ -118,16 +115,16 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Reduced complexity
+        # LightGBM hyperparameters for Type B
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 22,  # Reduced from 28
-            'max_depth': 7,  # Reduced from 8
-            'min_child_samples': 35,  # Increased from 28
+            'num_leaves': 22,
+            'max_depth': 7,
+            'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.020,  # Reduced from 0.025
+            'learning_rate': 0.020,
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,

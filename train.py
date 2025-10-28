@@ -105,10 +105,9 @@ def remove_correlated_features(X, threshold=0.95):
     
     return features_to_keep
 
-def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50, 
-                min_iterations=50, test_type='A'):
+def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50, test_type='A'):
     """
-    Train single LightGBM model with minimum iteration enforcement.
+    Train single LightGBM model.
     
     Args:
         X_train: Training features
@@ -117,32 +116,17 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
         y_val: Validation labels
         params: Model hyperparameters
         early_stopping_rounds: Early stopping rounds
-        min_iterations: Minimum iterations before early stopping
         test_type: 'A' or 'B'
         
     Returns:
         Trained model
     """
-    # Create datasets with free_raw_data=False to enable multi-stage training
-    train_data = lgb.Dataset(X_train, label=y_train, free_raw_data=False)
-    val_data = lgb.Dataset(X_val, label=y_val, reference=train_data, free_raw_data=False)
+    train_data = lgb.Dataset(X_train, label=y_train)
+    val_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
     
-    # Train initial model with minimum iterations
     model = lgb.train(
         params,
         train_data,
-        num_boost_round=min_iterations,
-        valid_sets=[train_data, val_data],
-        valid_names=['train', 'valid'],
-        callbacks=[lgb.log_evaluation(period=50)]
-    )
-    
-    # Continue training with early stopping
-    model = lgb.train(
-        params,
-        train_data,
-        num_boost_round=params['n_estimators'] - min_iterations,
-        init_model=model,
         valid_sets=[train_data, val_data],
         valid_names=['train', 'valid'],
         callbacks=[
@@ -240,14 +224,11 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 150)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
-    min_iterations = config.training.get('min_early_stop_iterations', 50)
-    
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
-    logger.info(f"Enforcing min_iterations={min_iterations}")
     
     # SMOTE configuration for Type B
     use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
@@ -280,10 +261,10 @@ def cross_validate(X, y, params, config, test_type='A'):
             logger.info(f"After SMOTE: {len(X_train_resampled)} samples, pos rate: {y_train_resampled.mean():.4f}")
             
             model = train_model(X_train_resampled, y_train_resampled, X_val, y_val, 
-                              params, early_stopping_rounds, min_iterations, test_type)
+                              params, early_stopping_rounds, test_type)
         else:
             model = train_model(X_train, y_train, X_val, y_val, params, 
-                              early_stopping_rounds, min_iterations, test_type)
+                              early_stopping_rounds, test_type)
         
         models.append(model)
         
@@ -352,37 +333,10 @@ def cross_validate(X, y, params, config, test_type='A'):
         return_models = best_model
         oof_for_calibration = oof_preds
     
-    # Calibrator with realistic bounds
+    # Calibrator - disabled due to overfitting issues
     calibrator = None
-    if config.training['use_calibration']:
-        logger.info("Training probability calibrator...")
-        
-        y_min = config.training.get('calibration_y_min', 0.001)
-        y_max = config.training.get('calibration_y_max', 0.999)
-        
-        calibrator = IsotonicRegression(
-            out_of_bounds='clip',
-            increasing=True,
-            y_min=y_min,
-            y_max=y_max
-        )
-        calibrator.fit(oof_for_calibration, y)
-        
-        calibrated_preds = calibrator.transform(oof_for_calibration)
-        calibrated_metrics = calculate_combined_score(y, calibrated_preds)
-        
-        logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
-                   f"Brier: {calibrated_metrics['brier']:.6f}, "
-                   f"ECE: {calibrated_metrics['ece']:.6f}, "
-                   f"Combined: {calibrated_metrics['combined']:.6f}")
-        
-        # Validate calibration result
-        if calibrated_metrics['ece'] < 0.0001:
-            logger.warning("ECE extremely low - possible overfitting")
-        if calibrated_metrics['combined'] > oof_metrics['combined'] * 1.1:
-            logger.warning("Calibration degraded performance significantly")
-    else:
-        logger.info("Calibration disabled")
+    if config.training.get('use_calibration', False):
+        logger.info("Calibration is disabled - causes overfitting on OOF data")
     
     return return_models, cv_metrics, oof_preds, selected_features, calibrator
 
@@ -505,11 +459,6 @@ def main():
         joblib.dump(ensemble_models_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
         
-        if calibrator_a is not None:
-            calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
-            joblib.dump(calibrator_a, calibrator_path_a)
-            logger.info(f"Calibrator A saved to {calibrator_path_a}")
-        
         feature_names_path_a = config.paths['feature_names_a']
         save_feature_names(selected_features_a, feature_names_path_a)
         logger.info(f"Feature names A saved to {feature_names_path_a}")
@@ -534,11 +483,6 @@ def main():
         model_path_b = config.paths['model_b']
         joblib.dump(ensemble_models_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
-        
-        if calibrator_b is not None:
-            calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
-            joblib.dump(calibrator_b, calibrator_path_b)
-            logger.info(f"Calibrator B saved to {calibrator_path_b}")
         
         feature_names_path_b = config.paths['feature_names_b']
         save_feature_names(selected_features_b, feature_names_path_b)
