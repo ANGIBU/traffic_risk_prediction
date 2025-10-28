@@ -40,8 +40,6 @@ class Config:
             'model_dir': self.base_dir / 'model',
             'model': self.base_dir / 'model' / 'lgbm_A.pkl',
             'model_b': self.base_dir / 'model' / 'lgbm_B.pkl',
-            'ensemble_models_a': self.base_dir / 'model' / 'ensemble_A',
-            'ensemble_models_b': self.base_dir / 'model' / 'ensemble_B',
             'feature_names_a': self.base_dir / 'model' / 'feature_names_A.txt',
             'feature_names_b': self.base_dir / 'model' / 'feature_names_B.txt',
             'output_dir': self.base_dir / 'output',
@@ -63,17 +61,17 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings - Strategy 2: More features allowed
+        # Feature engineering settings
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.94
+            'correlation_threshold': 0.93
         }
         
-        # Training settings - Strategy 2: Enhanced Type B feature selection
+        # Training settings
         self.training = {
             'n_splits': 5,
             'random_state': 42,
@@ -83,10 +81,8 @@ class Config:
             'early_stopping_rounds_b': 100,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.90,
+            'feature_selection_threshold_b': 0.88,
             'use_calibration': True,
-            'calibration_out_of_bounds': 'clip',
-            'calibration_blend_weight': 0.85,
             'remove_correlated_features': True,
             'use_ensemble': False,
             'ensemble_top_k': 3,
@@ -94,14 +90,14 @@ class Config:
             'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #11 settings maintained
+        # LightGBM hyperparameters for Type A - Experiment #8 Recovery
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 17,
+            'num_leaves': 19,
             'max_depth': 6,
-            'min_child_samples': 38,
+            'min_child_samples': 35,
             'min_child_weight': 0.001,
             'learning_rate': 0.02,
             'n_estimators': 2000,
@@ -110,8 +106,8 @@ class Config:
             'colsample_bytree': 0.8,
             'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 1.3,
-            'reg_lambda': 1.3,
+            'reg_alpha': 1.2,
+            'reg_lambda': 1.2,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -119,7 +115,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #11 settings maintained
+        # LightGBM hyperparameters for Type B - Experiment #8 with SMOTE
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
@@ -200,8 +196,3 @@ class Config:
     def ensure_model_dir(self) -> None:
         """Create model directory if it does not exist."""
         self.paths['model_dir'].mkdir(parents=True, exist_ok=True)
-    
-    def ensure_ensemble_dirs(self) -> None:
-        """Create ensemble model directories if they do not exist."""
-        self.paths['ensemble_models_a'].mkdir(parents=True, exist_ok=True)
-        self.paths['ensemble_models_b'].mkdir(parents=True, exist_ok=True)

@@ -87,6 +87,7 @@ class FeatureEngineer:
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A with domain knowledge.
+        Experiment #8 version - without additional 30 features.
         
         Args:
             df: Preprocessed type A data
@@ -210,7 +211,6 @@ class FeatureEngineer:
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B with domain knowledge and Type B specific patterns.
-        Strategy 2: Enhanced Type B features for better discrimination.
         
         Args:
             df: Preprocessed type B data
@@ -315,7 +315,7 @@ class FeatureEngineer:
             b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
             feats["B3_B5_rt_gap"] = b5_rt - b3_rt
         
-        # Sequential test pattern (B1->B2->B3)
+        # Sequential test pattern (B1→B2→B3)
         if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
             b1_num = self._ensure_numeric(feats["B1_rt_mean"])
             b2_num = self._ensure_numeric(feats["B2_rt_mean"])
@@ -325,7 +325,7 @@ class FeatureEngineer:
                 'b1': b1_num, 'b2': b2_num, 'b3': b3_num
             }).std(axis=1)
         
-        # Sequential test pattern (B3->B4->B5)
+        # Sequential test pattern (B3→B4→B5)
         if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
             b3_num = self._ensure_numeric(feats["B3_rt_mean"])
             b4_num = self._ensure_numeric(feats["B4_rt_mean"])
@@ -390,124 +390,132 @@ class FeatureEngineer:
             trend_df = feats[trend_cols].apply(self._ensure_numeric)
             feats["B_overall_trend_mean"] = trend_df.mean(axis=1)
         
-        # ========== Strategy 2: Type B Enhanced Features ==========
+        # Type B Specific Features
         
-        # 1. Full Test Sequence Overall Consistency (B1-B8)
-        all_acc_cols = []
-        for i in [1, 2, 3, 4, 5, 6, 7, 8]:
-            col_candidates = [c for c in feats.columns if f'B{i}_acc' in c and c.startswith('B')]
-            if col_candidates:
-                all_acc_cols.extend(col_candidates[:1])
-        
-        if len(all_acc_cols) >= 5:
-            all_acc_df = feats[all_acc_cols].apply(self._ensure_numeric)
-            feats["B_full_sequence_consistency"] = 1.0 - all_acc_df.std(axis=1) / (all_acc_df.mean(axis=1) + eps)
-            feats["B_full_sequence_range"] = all_acc_df.max(axis=1) - all_acc_df.min(axis=1)
-            feats["B_full_sequence_decline_rate"] = (all_acc_df.iloc[:, 0] - all_acc_df.iloc[:, -1]) / (all_acc_df.iloc[:, 0] + eps)
-        
-        # 2. Early (B1-B3) vs Late (B4-B8) Performance Comparison
-        early_acc_cols = [c for c in acc_cols if any(f'B{i}_' in c for i in [1, 2, 3])]
-        late_acc_cols = [c for c in acc_cols if any(f'B{i}_' in c for i in [4, 5, 6, 7, 8])]
-        
-        if len(early_acc_cols) > 0 and len(late_acc_cols) > 0:
-            early_acc = feats[early_acc_cols].apply(self._ensure_numeric).mean(axis=1)
-            late_acc = feats[late_acc_cols].apply(self._ensure_numeric).mean(axis=1)
-            feats["B_early_late_acc_gap"] = early_acc - late_acc
-            feats["B_early_late_acc_ratio"] = self._safe_div(late_acc, early_acc, eps)
-        
-        early_rt_cols = [c for c in rt_mean_cols if any(f'B{i}_' in c for i in [1, 2, 3])]
-        late_rt_cols = [c for c in rt_mean_cols if any(f'B{i}_' in c for i in [4, 5])]
-        
-        if len(early_rt_cols) > 0 and len(late_rt_cols) > 0:
-            early_rt = feats[early_rt_cols].apply(self._ensure_numeric).mean(axis=1)
-            late_rt = feats[late_rt_cols].apply(self._ensure_numeric).mean(axis=1)
-            feats["B_early_late_rt_gap"] = late_rt - early_rt
-            feats["B_early_late_rt_acceleration"] = self._safe_div(late_rt - early_rt, early_rt, eps)
-        
-        # 3. Fatigue Accumulation Index
-        if self._has(feats, ["B1_rt_mean", "B3_rt_mean", "B5_rt_mean"]):
-            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
-            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
-            b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
-            
-            feats["B_fatigue_index"] = ((b3_rt - b1_rt) + 2 * (b5_rt - b3_rt)) / (b1_rt + eps)
-            feats["B_fatigue_nonlinear"] = (b5_rt - b3_rt) / (b3_rt - b1_rt + eps)
-        
-        # 4. Learning and Adaptation Curve
+        # 1. B1->B2->B3 Full Sequential Flow Analysis
         if self._has(feats, ["B1_acc_task1", "B2_acc_task1", "B3_acc_rate"]):
             b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
             b2_acc = self._ensure_numeric(feats["B2_acc_task1"])
             b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
             
-            feats["B_learning_rate"] = (b2_acc - b1_acc) / (b1_acc + eps)
-            feats["B_adaptation_stability"] = 1.0 - ((b3_acc - b2_acc) / (b2_acc - b1_acc + eps)).abs()
+            feats["B123_acc_monotonic_decline"] = ((b1_acc >= b2_acc) & (b2_acc >= b3_acc)).astype(float)
+            feats["B123_acc_total_change"] = b1_acc - b3_acc
+            feats["B123_acc_change_rate"] = self._safe_div(b1_acc - b3_acc, b1_acc, eps)
         
-        # 5. Attention Sustainability Pattern (B6-B7-B8 detailed)
-        if self._has(feats, ["B6_acc_rate", "B7_acc_rate", "B8_acc_rate"]):
-            b6_acc = self._ensure_numeric(feats["B6_acc_rate"])
-            b7_acc = self._ensure_numeric(feats["B7_acc_rate"])
-            b8_acc = self._ensure_numeric(feats["B8_acc_rate"])
+        if self._has(feats, ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean"]):
+            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
+            b2_rt = self._ensure_numeric(feats["B2_rt_mean"])
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
             
-            feats["B678_attention_slope"] = ((b8_acc - b6_acc) / 2.0) / (b6_acc + eps)
-            feats["B678_attention_volatility"] = ((b7_acc - b6_acc).abs() + (b8_acc - b7_acc).abs()) / 2.0
-            feats["B678_sustained_performance"] = (b6_acc + b7_acc + b8_acc) / 3.0 * (1.0 - feats["B678_attention_volatility"])
+            feats["B123_rt_monotonic_increase"] = ((b1_rt <= b2_rt) & (b2_rt <= b3_rt)).astype(float)
+            feats["B123_rt_acceleration"] = (b3_rt - b2_rt) - (b2_rt - b1_rt)
         
-        # 6. Task Switching Stability Enhancement
-        if self._has(feats, ["B1_task_consistency", "B2_task_consistency"]):
-            b1_switch = 1.0 - self._ensure_numeric(feats["B1_task_consistency"])
-            b2_switch = 1.0 - self._ensure_numeric(feats["B2_task_consistency"])
-            
-            feats["B_task_switch_stability"] = 1.0 - (b1_switch - b2_switch).abs()
-            feats["B_task_switch_improvement"] = b1_switch - b2_switch
-        
-        # 7. Reaction Time Variability Pattern
-        rt_std_cols = [c for c in feats.columns if c.endswith('_rt_std') and c.startswith('B')]
-        if len(rt_std_cols) > 0:
-            rt_std_df = feats[rt_std_cols].apply(self._ensure_numeric)
-            feats["B_rt_variability_mean"] = rt_std_df.mean(axis=1)
-            feats["B_rt_variability_trend"] = (rt_std_df.iloc[:, -1] - rt_std_df.iloc[:, 0]) / (rt_std_df.iloc[:, 0] + eps)
-        
-        # 8. Accuracy Decline Speed
+        # 2. B3->B4->B5 Detailed Change Rate Analysis
         if self._has(feats, ["B3_acc_rate", "B4_acc_rate", "B5_acc_rate"]):
             b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
             b4_acc = self._ensure_numeric(feats["B4_acc_rate"])
             b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
             
-            decline_34 = (b3_acc - b4_acc) / (b3_acc + eps)
-            decline_45 = (b4_acc - b5_acc) / (b4_acc + eps)
-            
-            feats["B_acc_decline_speed"] = (decline_34 + decline_45) / 2.0
-            feats["B_acc_decline_acceleration"] = decline_45 - decline_34
+            feats["B34_acc_change_rate"] = self._safe_div(b4_acc - b3_acc, b3_acc, eps)
+            feats["B45_acc_change_rate"] = self._safe_div(b5_acc - b4_acc, b4_acc, eps)
+            feats["B345_acc_change_acceleration"] = feats["B45_acc_change_rate"] - feats["B34_acc_change_rate"]
         
-        # 9. Sequential Weighted Performance Score
-        if self._has(feats, ["B1_acc_task1", "B3_acc_rate", "B5_acc_rate", "B8_acc_rate"]):
-            b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
-            b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
-            b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
+        if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
+            b4_rt = self._ensure_numeric(feats["B4_rt_mean"])
+            b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
+            
+            feats["B34_rt_change_rate"] = self._safe_div(b4_rt - b3_rt, b3_rt, eps)
+            feats["B45_rt_change_rate"] = self._safe_div(b5_rt - b4_rt, b4_rt, eps)
+            feats["B345_rt_change_stability"] = 1.0 - (feats["B34_rt_change_rate"] - feats["B45_rt_change_rate"]).abs()
+        
+        # 3. Task Switching Cost Analysis
+        if self._has(feats, ["B1_acc_task1", "B1_acc_task2"]):
+            b1_t1 = self._ensure_numeric(feats["B1_acc_task1"])
+            b1_t2 = self._ensure_numeric(feats["B1_acc_task2"])
+            feats["B1_task_switch_cost"] = (b1_t1 - b1_t2).abs()
+            feats["B1_task_switch_direction"] = (b1_t1 - b1_t2)
+        
+        if self._has(feats, ["B2_acc_task1", "B2_acc_task2"]):
+            b2_t1 = self._ensure_numeric(feats["B2_acc_task1"])
+            b2_t2 = self._ensure_numeric(feats["B2_acc_task2"])
+            feats["B2_task_switch_cost"] = (b2_t1 - b2_t2).abs()
+            feats["B2_task_switch_direction"] = (b2_t1 - b2_t2)
+        
+        if self._has(feats, ["B1_task_switch_cost", "B2_task_switch_cost"]):
+            b1_switch = self._ensure_numeric(feats["B1_task_switch_cost"])
+            b2_switch = self._ensure_numeric(feats["B2_task_switch_cost"])
+            feats["B12_task_switch_change"] = b2_switch - b1_switch
+            feats["B12_task_switch_stability"] = 1.0 - (b1_switch - b2_switch).abs()
+        
+        # 4. Attention Maintenance Pattern (B6-B7-B8)
+        if self._has(feats, ["B6_acc_rate", "B7_acc_rate", "B8_acc_rate"]):
+            b6_acc = self._ensure_numeric(feats["B6_acc_rate"])
+            b7_acc = self._ensure_numeric(feats["B7_acc_rate"])
             b8_acc = self._ensure_numeric(feats["B8_acc_rate"])
             
-            feats["B_weighted_performance"] = (0.2 * b1_acc + 0.25 * b3_acc + 0.3 * b5_acc + 0.25 * b8_acc)
-            feats["B_weighted_consistency"] = 1.0 - pd.DataFrame({
-                'b1': b1_acc, 'b3': b3_acc, 'b5': b5_acc, 'b8': b8_acc
-            }).std(axis=1)
+            feats["B67_acc_change"] = b7_acc - b6_acc
+            feats["B78_acc_change"] = b8_acc - b7_acc
+            feats["B678_acc_change_consistency"] = 1.0 - (feats["B67_acc_change"] - feats["B78_acc_change"]).abs()
+            
+            feats["B678_acc_range"] = b6_acc.combine(b7_acc, max).combine(b8_acc, max) - \
+                                      b6_acc.combine(b7_acc, min).combine(b8_acc, min)
+            
+            feats["B678_monotonic_decline"] = ((b6_acc >= b7_acc) & (b7_acc >= b8_acc)).astype(float)
         
-        # 10. Enhanced Composite Risk Indicators
+        if self._has(feats, ["B6_acc_consistency", "B7_acc_consistency", "B8_acc_consistency"]):
+            b6_cons = self._ensure_numeric(feats["B6_acc_consistency"])
+            b7_cons = self._ensure_numeric(feats["B7_acc_consistency"])
+            b8_cons = self._ensure_numeric(feats["B8_acc_consistency"])
+            
+            feats["B678_consistency_mean"] = (b6_cons + b7_cons + b8_cons) / 3.0
+            feats["B678_consistency_decline"] = b6_cons - b8_cons
+        
+        # 5. Composite Risk Indicators
+        parts = []
+        if self._has(feats, ["B_overall_rt_std", "B_overall_rt_mean"]):
+            cv = self._safe_div(feats["B_overall_rt_std"], feats["B_overall_rt_mean"], eps)
+            parts.append(0.25 * self._ensure_numeric(cv).fillna(0))
+        if self._has(feats, ["B_overall_acc"]):
+            parts.append(0.25 * (1 - self._ensure_numeric(feats["B_overall_acc"]).fillna(0)))
+        if self._has(feats, ["B_overall_consistency"]):
+            parts.append(0.25 * (1 - self._ensure_numeric(feats["B_overall_consistency"]).fillna(0)))
+        if self._has(feats, ["B_overall_acc_min"]):
+            parts.append(0.25 * (1 - self._ensure_numeric(feats["B_overall_acc_min"]).fillna(0)))
+        if parts:
+            feats["RiskScore_B"] = sum(parts)
+        
+        # Sequential risk indicator
+        if self._has(feats, ["B123_acc_total_change", "B345_acc_decline"]):
+            early_decline = self._ensure_numeric(feats["B123_acc_total_change"]).fillna(0)
+            late_decline = self._ensure_numeric(feats["B345_acc_decline"]).fillna(0)
+            feats["Sequential_decline_risk"] = (early_decline + late_decline) / 2.0
+        
+        # Attention risk indicator
+        if self._has(feats, ["B678_acc_min", "B678_acc_consistency"]):
+            attention_min = self._ensure_numeric(feats["B678_acc_min"]).fillna(1.0)
+            attention_cons = self._ensure_numeric(feats["B678_acc_consistency"]).fillna(1.0)
+            feats["Attention_risk"] = (1 - attention_min) * 0.6 + (1 - attention_cons) * 0.4
+        
+        # Task switching risk indicator
+        if self._has(feats, ["B1_task_switch_cost", "B2_task_switch_cost"]):
+            b1_switch = self._ensure_numeric(feats["B1_task_switch_cost"]).fillna(0)
+            b2_switch = self._ensure_numeric(feats["B2_task_switch_cost"]).fillna(0)
+            feats["Task_switch_risk"] = (b1_switch + b2_switch) / 2.0
+        
+        # Comprehensive Type B risk score
         risk_components = []
-        
-        if "B_fatigue_index" in feats.columns:
-            risk_components.append(0.25 * self._ensure_numeric(feats["B_fatigue_index"]).fillna(0))
-        
-        if "B678_attention_volatility" in feats.columns:
-            risk_components.append(0.25 * self._ensure_numeric(feats["B678_attention_volatility"]).fillna(0))
-        
-        if "B_acc_decline_speed" in feats.columns:
-            risk_components.append(0.25 * self._ensure_numeric(feats["B_acc_decline_speed"]).fillna(0))
-        
-        if "B_rt_variability_trend" in feats.columns:
-            risk_components.append(0.25 * self._ensure_numeric(feats["B_rt_variability_trend"]).fillna(0).clip(-1, 1))
+        if "Sequential_decline_risk" in feats.columns:
+            risk_components.append(0.3 * self._ensure_numeric(feats["Sequential_decline_risk"]).fillna(0))
+        if "Attention_risk" in feats.columns:
+            risk_components.append(0.3 * self._ensure_numeric(feats["Attention_risk"]).fillna(0))
+        if "Task_switch_risk" in feats.columns:
+            risk_components.append(0.2 * self._ensure_numeric(feats["Task_switch_risk"]).fillna(0))
+        if "RiskScore_B" in feats.columns:
+            risk_components.append(0.2 * self._ensure_numeric(feats["RiskScore_B"]).fillna(0))
         
         if risk_components:
-            feats["B_enhanced_risk_score"] = sum(risk_components)
+            feats["TypeB_comprehensive_risk"] = sum(risk_components)
         
         # Age interaction features
         if self._has(feats, ["Age_num", "B_overall_rt_mean"]):
@@ -518,9 +526,6 @@ class FeatureEngineer:
         
         if self._has(feats, ["Age_num", "B_overall_consistency"]):
             feats["Age_consistency_interaction"] = self._safe_multiply(feats["Age_num"], feats["B_overall_consistency"])
-        
-        if self._has(feats, ["Age_num", "B_enhanced_risk_score"]):
-            feats["Age_risk_interaction"] = self._safe_multiply(feats["Age_num"], feats["B_enhanced_risk_score"])
         
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test B: {feats.shape}")
