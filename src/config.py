@@ -63,7 +63,7 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings - Exp #13: maintain Exp #11 settings
+        # Feature engineering settings - Exp #11 settings
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
@@ -73,7 +73,7 @@ class Config:
             'correlation_threshold': 0.93
         }
         
-        # Training settings - Exp #13: Ensemble Top-3 enabled
+        # Training settings - Exp #11 restored (Ensemble disabled)
         self.training = {
             'n_splits': 5,
             'random_state': 42,
@@ -88,7 +88,7 @@ class Config:
             'calibration_out_of_bounds': 'clip',
             'calibration_blend_weight': 0.85,
             'remove_correlated_features': True,
-            'use_ensemble': True,
+            'use_ensemble': False,
             'ensemble_top_k': 3,
             'use_smote_b': False,
             'smote_sampling_strategy': 0.15
