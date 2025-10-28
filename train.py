@@ -123,8 +123,9 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
     Returns:
         Trained model
     """
-    train_data = lgb.Dataset(X_train, label=y_train)
-    val_data = lgb.Dataset(X_val, label=y_val, reference=train_data)
+    # Create datasets with free_raw_data=False to enable multi-stage training
+    train_data = lgb.Dataset(X_train, label=y_train, free_raw_data=False)
+    val_data = lgb.Dataset(X_val, label=y_val, reference=train_data, free_raw_data=False)
     
     # Train initial model with minimum iterations
     model = lgb.train(
