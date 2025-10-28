@@ -63,17 +63,17 @@ class Config:
             'eps': 1e-6
         }
         
-        # Feature engineering settings - Exp #11 settings
+        # Feature engineering settings - Strategy 2: More features allowed
         self.feature_engineering = {
             'use_temporal': True,
             'use_cross_test': True,
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.93
+            'correlation_threshold': 0.94
         }
         
-        # Training settings - Exp #11 restored (Ensemble disabled)
+        # Training settings - Strategy 2: Enhanced Type B feature selection
         self.training = {
             'n_splits': 5,
             'random_state': 42,
@@ -83,7 +83,7 @@ class Config:
             'early_stopping_rounds_b': 100,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.88,
+            'feature_selection_threshold_b': 0.90,
             'use_calibration': True,
             'calibration_out_of_bounds': 'clip',
             'calibration_blend_weight': 0.85,
@@ -94,7 +94,7 @@ class Config:
             'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #11 settings
+        # LightGBM hyperparameters for Type A - Experiment #11 settings maintained
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
@@ -119,7 +119,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #11 settings
+        # LightGBM hyperparameters for Type B - Experiment #11 settings maintained
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
