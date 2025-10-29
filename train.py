@@ -236,7 +236,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.85)
+            threshold = config.training.get('feature_selection_threshold_b', 0.88)
         else:
             threshold = config.training.get('feature_selection_threshold', 0.92)
         
@@ -248,7 +248,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 50)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 150)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
@@ -315,11 +315,13 @@ def cross_validate(X, y, params, config, test_type='A'):
         std = metrics_df[metric].std()
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
-    # Top-k ensemble selection
-    use_ensemble = config.training.get('use_ensemble', True)
-    ensemble_top_k = config.training.get('ensemble_top_k', 3)
+    # Use best single model (ensemble disabled)
+    use_ensemble = config.training.get('use_ensemble', False)
     
     if use_ensemble:
+        # Top-k ensemble selection
+        ensemble_top_k = config.training.get('ensemble_top_k', 3)
+        
         # Sort by combined score
         fold_scores = [(i, m['combined']) for i, m in enumerate(cv_metrics)]
         fold_scores.sort(key=lambda x: x[1])

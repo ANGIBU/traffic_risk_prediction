@@ -202,7 +202,7 @@ class FeatureEngineer:
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B.
-        Simplified version to reduce overfitting and maintain 58 features target.
+        Enhanced with 20 additional Type B specific features.
         
         Args:
             df: Preprocessed type B data
@@ -310,6 +310,95 @@ class FeatureEngineer:
         # Median-based robustness
         if self._has(feats, ["B3_rt_median", "B3_rt_mean"]):
             feats["B3_rt_robustness"] = self._safe_div(feats["B3_rt_median"], feats["B3_rt_mean"], eps)
+        
+        # === NEW TYPE B SPECIFIC FEATURES (20 features) ===
+        
+        # 1. B1-B2 Learning Effect Analysis (4 features)
+        # Measures adaptation and learning between similar sequential tests
+        if self._has(feats, ["B1_rt_mean", "B2_rt_mean"]):
+            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
+            b2_rt = self._ensure_numeric(feats["B2_rt_mean"])
+            feats["B1_B2_learning_rate"] = self._safe_div(b2_rt - b1_rt, b1_rt, eps)
+        
+        if self._has(feats, ["B1_acc_task1", "B2_acc_task1"]):
+            b1_acc = self._ensure_numeric(feats["B1_acc_task1"])
+            b2_acc = self._ensure_numeric(feats["B2_acc_task1"])
+            feats["B1_B2_acc_learning"] = self._safe_div(b2_acc - b1_acc, b1_acc + eps, eps)
+        
+        if self._has(feats, ["B1_rt_consistency", "B2_rt_consistency"]):
+            b1_cons = self._ensure_numeric(feats["B1_rt_consistency"])
+            b2_cons = self._ensure_numeric(feats["B2_rt_consistency"])
+            feats["B1_B2_consistency_learning"] = b2_cons - b1_cons
+        
+        if self._has(feats, ["B1_rt_adaptation", "B2_rt_adaptation"]):
+            feats["B1_B2_adaptation_change"] = self._safe_subtract(feats["B2_rt_adaptation"], feats["B1_rt_adaptation"])
+        
+        # 2. B3-B4-B5 Sequential Pattern (4 features)
+        # Analyzes progression through increasing complexity
+        if self._has(feats, ["B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]):
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
+            b4_rt = self._ensure_numeric(feats["B4_rt_mean"])
+            b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
+            feats["B345_rt_progression"] = (b5_rt - b3_rt) / (b4_rt + eps)
+            feats["B345_rt_variability"] = np.maximum(np.maximum(b3_rt, b4_rt), b5_rt) - np.minimum(np.minimum(b3_rt, b4_rt), b5_rt)
+        
+        if self._has(feats, ["B3_acc_rate", "B4_acc_rate", "B5_acc_rate"]):
+            b3_acc = self._ensure_numeric(feats["B3_acc_rate"])
+            b4_acc = self._ensure_numeric(feats["B4_acc_rate"])
+            b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
+            feats["B345_acc_stability"] = 1.0 - (np.maximum(np.maximum(b3_acc, b4_acc), b5_acc) - np.minimum(np.minimum(b3_acc, b4_acc), b5_acc))
+            feats["B345_acc_trend_slope"] = (b5_acc - b3_acc) / 2.0
+        
+        # 3. B6-B7-B8 Simple Response Consistency (3 features)
+        # Measures stability in simple reaction tests
+        if self._has(feats, ["B6_acc_rate", "B7_acc_rate", "B8_acc_rate"]):
+            b6_acc = self._ensure_numeric(feats["B6_acc_rate"])
+            b7_acc = self._ensure_numeric(feats["B7_acc_rate"])
+            b8_acc = self._ensure_numeric(feats["B8_acc_rate"])
+            feats["B678_simple_consistency"] = 1.0 - (np.maximum(np.maximum(b6_acc, b7_acc), b8_acc) - np.minimum(np.minimum(b6_acc, b7_acc), b8_acc))
+            feats["B678_simple_mean"] = (b6_acc + b7_acc + b8_acc) / 3.0
+            feats["B678_simple_std"] = np.sqrt(((b6_acc - feats["B678_simple_mean"])**2 + 
+                                                  (b7_acc - feats["B678_simple_mean"])**2 + 
+                                                  (b8_acc - feats["B678_simple_mean"])**2) / 3.0)
+        
+        # 4. Cross-Test Interaction Features (5 features)
+        # Captures relationships between different test types
+        if self._has(feats, ["B1_rt_mean", "B3_rt_mean", "B5_rt_mean"]):
+            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
+            b3_rt = self._ensure_numeric(feats["B3_rt_mean"])
+            b5_rt = self._ensure_numeric(feats["B5_rt_mean"])
+            feats["B135_rt_balance"] = self._safe_div(b3_rt, (b1_rt + b5_rt) / 2.0 + eps, eps)
+        
+        if self._has(feats, ["B2_rt_mean", "B4_rt_mean"]):
+            b2_rt = self._ensure_numeric(feats["B2_rt_mean"])
+            b4_rt = self._ensure_numeric(feats["B4_rt_mean"])
+            feats["B24_rt_ratio"] = self._safe_div(b2_rt, b4_rt, eps)
+        
+        if self._has(feats, ["B1_acc_task1", "B5_acc_rate"]):
+            feats["B1_B5_acc_consistency"] = 1.0 - abs(self._safe_subtract(feats["B1_acc_task1"], feats["B5_acc_rate"]))
+        
+        if self._has(feats, ["B3_rt_consistency", "B6_acc_consistency"]):
+            feats["B3_B6_consistency_product"] = self._safe_multiply(feats["B3_rt_consistency"], feats["B6_acc_consistency"])
+        
+        if self._has(feats, ["B4_acc_rate", "B8_acc_rate"]):
+            feats["B4_B8_simple_complex_gap"] = self._safe_subtract(feats["B8_acc_rate"], feats["B4_acc_rate"])
+        
+        # 5. Non-linear Transformations (4 features)
+        # Captures non-linear relationships in key metrics
+        if self._has(feats, ["B1_rt_mean"]):
+            b1_rt = self._ensure_numeric(feats["B1_rt_mean"])
+            feats["B1_rt_log"] = np.log1p(b1_rt)
+            feats["B1_rt_sqrt"] = np.sqrt(b1_rt + eps)
+        
+        if self._has(feats, ["B3_rt_std"]):
+            b3_std = self._ensure_numeric(feats["B3_rt_std"])
+            feats["B3_rt_std_sqrt"] = np.sqrt(b3_std + eps)
+        
+        if self._has(feats, ["B5_acc_rate"]):
+            b5_acc = self._ensure_numeric(feats["B5_acc_rate"])
+            feats["B5_acc_squared"] = b5_acc ** 2
+        
+        # === END OF NEW TYPE B SPECIFIC FEATURES ===
         
         # Overall response quality
         acc_cols = [c for c in feats.columns if 'acc_' in c and c.startswith('B')]

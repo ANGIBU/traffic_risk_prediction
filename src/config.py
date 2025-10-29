@@ -78,13 +78,13 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 50,
+            'early_stopping_rounds_b': 150,  # Increased for Type B
             'use_feature_selection': True,
             'feature_selection_threshold': 0.92,
-            'feature_selection_threshold_b': 0.85,
+            'feature_selection_threshold_b': 0.88,  # Relaxed for Type B
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': True,
+            'use_ensemble': False,  # Disabled due to previous failure
             'ensemble_top_k': 3,
             'use_smote_b': False,
             'smote_sampling_strategy': 0.15,
@@ -116,16 +116,16 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B
+        # LightGBM hyperparameters for Type B - Adjusted for better learning
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 22,
+            'num_leaves': 28,  # Maintained from Experiment 8
             'max_depth': 7,
-            'min_child_samples': 35,
+            'min_child_samples': 30,  # Decreased from 35 for more flexibility
             'min_child_weight': 0.001,
-            'learning_rate': 0.020,
+            'learning_rate': 0.017,  # Decreased from 0.020 for slower, more stable learning
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,
