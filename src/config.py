@@ -68,7 +68,7 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.95
+            'correlation_threshold': 0.90
         }
         
         # Training settings
@@ -78,16 +78,17 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 100,
+            'early_stopping_rounds_b': 50,
             'use_feature_selection': True,
             'feature_selection_threshold': 0.92,
-            'feature_selection_threshold_b': 0.90,
-            'use_calibration': False,
+            'feature_selection_threshold_b': 0.85,
+            'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': True,
             'ensemble_top_k': 3,
             'use_smote_b': False,
-            'smote_sampling_strategy': 0.15
+            'smote_sampling_strategy': 0.15,
+            'calibration_holdout_size': 0.15
         }
         
         # LightGBM hyperparameters for Type A
@@ -104,7 +105,7 @@ class Config:
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 8.0,
+            'scale_pos_weight': 15.0,
             'is_unbalance': False,
             'reg_alpha': 1.2,
             'reg_lambda': 1.2,
@@ -129,7 +130,7 @@ class Config:
             'subsample': 0.85,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 12.0,
+            'scale_pos_weight': 20.0,
             'is_unbalance': False,
             'reg_alpha': 0.8,
             'reg_lambda': 0.8,

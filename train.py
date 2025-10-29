@@ -11,7 +11,7 @@ import time
 import warnings
 warnings.filterwarnings('ignore')
 
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.feature_selection import SelectFromModel
 from sklearn.isotonic import IsotonicRegression
@@ -182,9 +182,33 @@ def select_features(X, y, params, threshold=0.90):
     
     return selected
 
+def train_calibrator(y_true, y_pred):
+    """
+    Train Isotonic Regression calibrator.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted probabilities
+        
+    Returns:
+        Trained calibrator
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Training Isotonic Regression calibrator")
+    
+    calibrator = IsotonicRegression(out_of_bounds='clip')
+    calibrator.fit(y_pred, y_true)
+    
+    calibrated_pred = calibrator.predict(y_pred)
+    
+    logger.info(f"Before calibration - ECE: {calculate_ece(y_true, y_pred):.6f}")
+    logger.info(f"After calibration - ECE: {calculate_ece(y_true, calibrated_pred):.6f}")
+    
+    return calibrator
+
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation with top-k ensemble.
+    Perform stratified k-fold cross-validation with top-k ensemble and hold-out calibration.
     
     Args:
         X: Features
@@ -212,7 +236,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.90)
+            threshold = config.training.get('feature_selection_threshold_b', 0.85)
         else:
             threshold = config.training.get('feature_selection_threshold', 0.92)
         
@@ -224,7 +248,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 50)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
@@ -333,10 +357,34 @@ def cross_validate(X, y, params, config, test_type='A'):
         return_models = best_model
         oof_for_calibration = oof_preds
     
-    # Calibrator - disabled due to overfitting issues
+    # Calibrator with hold-out set approach
     calibrator = None
     if config.training.get('use_calibration', False):
-        logger.info("Calibration is disabled - causes overfitting on OOF data")
+        logger.info("Training calibrator using hold-out set approach")
+        
+        # Split data for calibration (use separate hold-out set, not OOF)
+        holdout_size = config.training.get('calibration_holdout_size', 0.15)
+        X_calib_train, X_calib_holdout, y_calib_train, y_calib_holdout = train_test_split(
+            X, y, test_size=holdout_size, random_state=42, stratify=y
+        )
+        
+        logger.info(f"Calibration: Train={len(X_calib_train)}, Holdout={len(X_calib_holdout)}")
+        
+        # Generate predictions on hold-out set
+        if isinstance(return_models, tuple):
+            models_list, weights_list = return_models
+            holdout_preds = []
+            for model in models_list:
+                pred = model.predict(X_calib_holdout, num_iteration=model.best_iteration)
+                holdout_preds.append(pred)
+            holdout_pred = np.average(holdout_preds, axis=0, weights=weights_list)
+        else:
+            holdout_pred = return_models.predict(X_calib_holdout, num_iteration=return_models.best_iteration)
+        
+        # Train calibrator on hold-out set
+        calibrator = train_calibrator(y_calib_holdout, holdout_pred)
+        
+        logger.info("Calibrator trained successfully using hold-out set")
     
     return return_models, cv_metrics, oof_preds, selected_features, calibrator
 
@@ -463,6 +511,12 @@ def main():
         save_feature_names(selected_features_a, feature_names_path_a)
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
+        # Save calibrator A if exists
+        if calibrator_a is not None:
+            calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
+            joblib.dump(calibrator_a, calibrator_path_a)
+            logger.info(f"Calibrator A saved to {calibrator_path_a}")
+        
         logger.info("="*60)
         logger.info("STEP 5: Training Type B model")
         logger.info("="*60)
@@ -488,6 +542,12 @@ def main():
         save_feature_names(selected_features_b, feature_names_path_b)
         logger.info(f"Feature names B saved to {feature_names_path_b}")
         
+        # Save calibrator B if exists
+        if calibrator_b is not None:
+            calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
+            joblib.dump(calibrator_b, calibrator_path_b)
+            logger.info(f"Calibrator B saved to {calibrator_path_b}")
+        
         logger.info("="*60)
         logger.info("TRAINING COMPLETE")
         logger.info("="*60)
@@ -507,7 +567,6 @@ def main():
         # Feature importance logging
         if isinstance(ensemble_models_a, tuple):
             models_a, weights_a = ensemble_models_a
-            # Use first model for feature importance
             feature_importance_a = pd.DataFrame({
                 'feature': selected_features_a,
                 'importance': models_a[0].feature_importance(importance_type='gain')

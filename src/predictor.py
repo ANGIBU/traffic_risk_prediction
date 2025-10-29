@@ -17,7 +17,7 @@ class Predictor:
     
     Handles model loading, batch prediction, and feature alignment
     for optimized inference performance. Supports both single models
-    and ensemble models.
+    and ensemble models with optional calibration.
     """
     
     def __init__(self, config):
@@ -72,10 +72,23 @@ class Predictor:
             logger.info("Calibration disabled - not loading calibrators")
             return
         
-        # Calibration disabled due to overfitting
-        logger.info("Calibration functionality disabled")
-        self.calibrator_a = None
-        self.calibrator_b = None
+        # Load calibrator A
+        calibrator_path_a = self.config.paths['model_dir'] / 'calibrator_A.pkl'
+        if calibrator_path_a.exists():
+            logger.info(f"Loading calibrator A from {calibrator_path_a}")
+            self.calibrator_a = joblib.load(calibrator_path_a)
+            logger.info("Calibrator A loaded successfully")
+        else:
+            logger.info("Calibrator A not found")
+        
+        # Load calibrator B
+        calibrator_path_b = self.config.paths['model_dir'] / 'calibrator_B.pkl'
+        if calibrator_path_b.exists():
+            logger.info(f"Loading calibrator B from {calibrator_path_b}")
+            self.calibrator_b = joblib.load(calibrator_path_b)
+            logger.info("Calibrator B loaded successfully")
+        else:
+            logger.info("Calibrator B not found")
     
     def _load_feature_names(self) -> None:
         """Load feature names from disk."""
@@ -144,6 +157,12 @@ class Predictor:
             X_a = self._align_to_model(df_a, self.model_a, self.feature_names_a, 'A')
             pred_a = self._batch_predict(self.model_a, X_a)
             
+            # Apply calibration if available
+            if self.calibrator_a is not None:
+                logger.info("Applying calibration to Type A predictions")
+                pred_a = self.calibrator_a.predict(pred_a)
+                pred_a = np.clip(pred_a, 0.0, 1.0)
+            
             predictions['A'] = pred_a
             logger.info(f"Type A predictions: mean={pred_a.mean():.4f}, std={pred_a.std():.4f}")
         else:
@@ -154,6 +173,12 @@ class Predictor:
             logger.info(f"Predicting for {len(df_b)} type B samples")
             X_b = self._align_to_model(df_b, self.model_b, self.feature_names_b, 'B')
             pred_b = self._batch_predict(self.model_b, X_b)
+            
+            # Apply calibration if available
+            if self.calibrator_b is not None:
+                logger.info("Applying calibration to Type B predictions")
+                pred_b = self.calibrator_b.predict(pred_b)
+                pred_b = np.clip(pred_b, 0.0, 1.0)
             
             predictions['B'] = pred_b
             logger.info(f"Type B predictions: mean={pred_b.mean():.4f}, std={pred_b.std():.4f}")
