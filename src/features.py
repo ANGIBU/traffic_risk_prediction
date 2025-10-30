@@ -88,7 +88,7 @@ class FeatureEngineer:
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A.
-        Simplified version to reduce overfitting and maintain 57 features target.
+        Conservative approach with selective non-linear features.
         
         Args:
             df: Preprocessed type A data
@@ -194,6 +194,34 @@ class FeatureEngineer:
         if len(consistency_cols) > 0:
             cons_df = feats[consistency_cols].apply(self._ensure_numeric)
             feats["A_overall_consistency"] = cons_df.mean(axis=1)
+        
+        # === NEW: Selective non-linear features (5 features only) ===
+        
+        # 1. Log transformation for key RT features
+        if self._has(feats, ["A1_rt_mean"]):
+            a1_rt = self._ensure_numeric(feats["A1_rt_mean"])
+            feats["A1_rt_log"] = np.log1p(a1_rt)
+        
+        # 2. Sqrt transformation for stability
+        if self._has(feats, ["A3_rt_std"]):
+            a3_std = self._ensure_numeric(feats["A3_rt_std"])
+            feats["A3_rt_std_sqrt"] = np.sqrt(a3_std + eps)
+        
+        # 3. Squared feature for non-linear relationship
+        if self._has(feats, ["A4_acc_rate"]):
+            a4_acc = self._ensure_numeric(feats["A4_acc_rate"])
+            feats["A4_acc_squared"] = a4_acc ** 2
+        
+        # 4. Age interaction with performance
+        if self._has(feats, ["Age_num", "A_overall_rt_mean"]):
+            age_num = self._ensure_numeric(feats["Age_num"])
+            rt_mean = self._ensure_numeric(feats["A_overall_rt_mean"])
+            feats["Age_rt_interaction"] = age_num * rt_mean / 1000.0
+        
+        # 5. Overall RT log transformation
+        if self._has(feats, ["A_overall_rt_mean"]):
+            overall_rt = self._ensure_numeric(feats["A_overall_rt_mean"])
+            feats["A_overall_rt_log"] = np.log1p(overall_rt)
         
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test A: {feats.shape}")
