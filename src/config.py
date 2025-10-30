@@ -125,7 +125,7 @@ class Config:
             'max_depth': 7,
             'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.024,  # Mid-point between 0.023 and 0.025
+            'learning_rate': 0.025,  # Exp #1 optimal setting
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,
