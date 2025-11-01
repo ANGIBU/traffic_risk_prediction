@@ -77,38 +77,40 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 100,  # Exp #1 stable setting
+            'early_stopping_rounds': 75,  # Adjusted from 50
+            'early_stopping_rounds_b': 125,  # Adjusted from 100
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.92,
-            'feature_selection_threshold_b': 0.85,  # Exp #1 stable setting
+            'feature_selection_threshold': 0.90,  # Relaxed from 0.92
+            'feature_selection_threshold_b': 0.82,  # Relaxed from 0.85
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': False,
+            'use_ensemble': True,  # Changed from False to True
             'ensemble_top_k': 3,
+            'use_smote_a': True,  # Added for Type A
             'use_smote_b': True,
-            'smote_sampling_strategy': 0.10,
-            'calibration_holdout_size': 0.15
+            'smote_sampling_strategy_a': 0.3,  # Added for Type A
+            'smote_sampling_strategy_b': 0.3,  # Increased from 0.10
+            'calibration_method': 'oof'  # Changed from holdout to oof
         }
         
-        # LightGBM hyperparameters for Type A - Exp #1 stable settings
+        # LightGBM hyperparameters for Type A
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 19,  # Exp #1 setting
+            'num_leaves': 27,  # Relaxed from 19
             'max_depth': 6,
-            'min_child_samples': 35,  # Exp #1 setting
+            'min_child_samples': 28,  # Relaxed from 35
             'min_child_weight': 0.001,
             'learning_rate': 0.02,
             'n_estimators': 2000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 15.0,
+            'scale_pos_weight': 10.0,  # Reduced from 15.0
             'is_unbalance': False,
-            'reg_alpha': 1.2,  # Exp #1 setting
-            'reg_lambda': 1.2,  # Exp #1 setting
+            'reg_alpha': 0.9,  # Relaxed from 1.2
+            'reg_lambda': 0.9,  # Relaxed from 1.2
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -116,7 +118,7 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B - Minimal adjustment from Exp #1
+        # LightGBM hyperparameters for Type B
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
@@ -125,12 +127,12 @@ class Config:
             'max_depth': 7,
             'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.025,  # Exp #1 optimal setting
+            'learning_rate': 0.025,
             'n_estimators': 2000,
             'subsample': 0.85,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 20.0,
+            'scale_pos_weight': 12.0,  # Reduced from 20.0
             'is_unbalance': False,
             'reg_alpha': 0.8,
             'reg_lambda': 0.8,
