@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 class FeatureEngineer:
     """
     Feature engineering pipeline with domain knowledge.
-    Simplified version to reduce overfitting.
     """
     
     def __init__(self, config):
@@ -23,6 +22,8 @@ class FeatureEngineer:
         """
         self.config = config
         self.eps = config.preprocessing['eps']
+        self.use_domain_features = config.feature_engineering.get('use_domain_features', True)
+        self.use_log_transform = config.feature_engineering.get('use_log_transform', True)
         
     def _ensure_numeric(self, series):
         """
@@ -85,10 +86,22 @@ class FeatureEngineer:
         b_num = self._ensure_numeric(b)
         return a_num + b_num
     
+    def _safe_log(self, series):
+        """
+        Safe logarithm transformation.
+        
+        Args:
+            series: Input series
+            
+        Returns:
+            Log-transformed series
+        """
+        series_num = self._ensure_numeric(series)
+        return np.log1p(np.maximum(series_num, 0))
+    
     def add_features_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type A.
-        Conservative approach with selective non-linear features.
         
         Args:
             df: Preprocessed type A data
@@ -120,6 +133,12 @@ class FeatureEngineer:
         # Year-Month index
         if self._has(feats, ["Year", "Month"]):
             feats["YearMonthIndex"] = self._safe_multiply(feats["Year"], 12) + self._ensure_numeric(feats["Month"])
+        
+        # Log transformation for reaction time features
+        if self.use_log_transform:
+            for col in ["A1_rt_mean", "A2_rt_mean", "A3_rt_mean", "A4_rt_mean"]:
+                if col in feats.columns:
+                    feats[f"{col}_log"] = self._safe_log(feats[col])
         
         # Basic speed-accuracy tradeoff features
         if self._has(feats, ["A1_rt_mean", "A1_resp_rate"]):
@@ -195,14 +214,81 @@ class FeatureEngineer:
             cons_df = feats[consistency_cols].apply(self._ensure_numeric)
             feats["A_overall_consistency"] = cons_df.mean(axis=1)
         
+        # Domain-specific features
+        if self.use_domain_features:
+            feats = self._add_domain_features_a(feats)
+        
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test A: {feats.shape}")
+        return feats
+    
+    def _add_domain_features_a(self, feats: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add domain-specific cognitive features for Type A.
+        
+        Args:
+            feats: Feature dataframe
+            
+        Returns:
+            Enhanced feature dataframe
+        """
+        eps = self.eps
+        
+        # Cognitive load index
+        if self._has(feats, ["A1_rt_mean", "A4_rt_mean", "A1_resp_rate", "A4_acc_rate"]):
+            simple_perf = self._safe_div(feats["A1_resp_rate"], feats["A1_rt_mean"], eps)
+            complex_perf = self._safe_div(feats["A4_acc_rate"], feats["A4_rt_mean"], eps)
+            feats["A_cognitive_load_index"] = self._safe_div(simple_perf, complex_perf, eps)
+        
+        # Attention sustainability
+        if self._has(feats, ["A1_rt_consistency", "A4_rt_consistency"]):
+            feats["A_attention_sustainability"] = (
+                self._ensure_numeric(feats["A1_rt_consistency"]) * 
+                self._ensure_numeric(feats["A4_rt_consistency"])
+            )
+        
+        # Error recovery pattern
+        if self._has(feats, ["A4_acc_rate", "A4_rt_std", "A4_rt_mean"]):
+            acc = self._ensure_numeric(feats["A4_acc_rate"])
+            variability = self._safe_div(feats["A4_rt_std"], feats["A4_rt_mean"], eps)
+            feats["A_error_recovery"] = self._safe_div(acc, variability, eps)
+        
+        # Response stability
+        if self._has(feats, ["A1_rt_outlier_count", "A3_rt_outlier_count", "A4_rt_outlier_count"]):
+            total_outliers = (
+                self._ensure_numeric(feats["A1_rt_outlier_count"]) +
+                self._ensure_numeric(feats["A3_rt_outlier_count"]) +
+                self._ensure_numeric(feats["A4_rt_outlier_count"])
+            )
+            feats["A_response_stability"] = 1.0 / (1.0 + total_outliers)
+        
+        # Interference resistance
+        if self._has(feats, ["A4_stroop_diff", "A4_rt_mean"]):
+            stroop_norm = self._safe_div(feats["A4_stroop_diff"], feats["A4_rt_mean"], eps)
+            feats["A_interference_resistance"] = 1.0 / (1.0 + self._ensure_numeric(stroop_norm).abs())
+        
+        # Performance decline
+        if self._has(feats, ["A1_rt_adaptation", "A2_rt_adaptation", "A4_rt_adaptation"]):
+            avg_adaptation = (
+                self._ensure_numeric(feats["A1_rt_adaptation"]) +
+                self._ensure_numeric(feats["A2_rt_adaptation"]) +
+                self._ensure_numeric(feats["A4_rt_adaptation"])
+            ) / 3.0
+            feats["A_performance_decline"] = avg_adaptation
+        
+        # Processing speed efficiency
+        if self._has(feats, ["A_overall_rt_mean", "A_overall_acc"]):
+            feats["A_processing_efficiency"] = self._safe_div(
+                feats["A_overall_acc"], 
+                self._safe_log(feats["A_overall_rt_mean"]), 
+                eps
+            )
+        
         return feats
     
     def add_features_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Add derived features for test type B.
-        Exp #1 stable configuration - no additional features.
         
         Args:
             df: Preprocessed type B data
@@ -234,6 +320,12 @@ class FeatureEngineer:
         # Year-Month index
         if self._has(feats, ["Year", "Month"]):
             feats["YearMonthIndex"] = self._safe_multiply(feats["Year"], 12) + self._ensure_numeric(feats["Month"])
+        
+        # Log transformation for reaction time features
+        if self.use_log_transform:
+            for col in ["B1_rt_mean", "B2_rt_mean", "B3_rt_mean", "B4_rt_mean", "B5_rt_mean"]:
+                if col in feats.columns:
+                    feats[f"{col}_log"] = self._safe_log(feats[col])
         
         # Basic speed-accuracy tradeoff features
         for k, acc_col, rt_col in [
@@ -340,8 +432,83 @@ class FeatureEngineer:
             trend_df = feats[trend_cols].apply(self._ensure_numeric)
             feats["B_overall_trend_mean"] = trend_df.mean(axis=1)
         
+        # Domain-specific features
+        if self.use_domain_features:
+            feats = self._add_domain_features_b(feats)
+        
         feats.replace([np.inf, -np.inf], np.nan, inplace=True)
         logger.info(f"Feature engineering complete for test B: {feats.shape}")
+        return feats
+    
+    def _add_domain_features_b(self, feats: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add domain-specific cognitive features for Type B.
+        
+        Args:
+            feats: Feature dataframe
+            
+        Returns:
+            Enhanced feature dataframe
+        """
+        eps = self.eps
+        
+        # Cognitive load index
+        if self._has(feats, ["B1_rt_mean", "B5_rt_mean", "B1_acc_task1", "B5_acc_rate"]):
+            simple_perf = self._safe_div(feats["B1_acc_task1"], feats["B1_rt_mean"], eps)
+            complex_perf = self._safe_div(feats["B5_acc_rate"], feats["B5_rt_mean"], eps)
+            feats["B_cognitive_load_index"] = self._safe_div(simple_perf, complex_perf, eps)
+        
+        # Attention sustainability
+        if self._has(feats, ["B1_rt_consistency", "B5_rt_consistency"]):
+            feats["B_attention_sustainability"] = (
+                self._ensure_numeric(feats["B1_rt_consistency"]) * 
+                self._ensure_numeric(feats["B5_rt_consistency"])
+            )
+        
+        # Error recovery pattern
+        if self._has(feats, ["B3_acc_rate", "B3_rt_std", "B3_rt_mean"]):
+            acc = self._ensure_numeric(feats["B3_acc_rate"])
+            variability = self._safe_div(feats["B3_rt_std"], feats["B3_rt_mean"], eps)
+            feats["B_error_recovery"] = self._safe_div(acc, variability, eps)
+        
+        # Response stability
+        if self._has(feats, ["B1_rt_outlier_count", "B3_rt_outlier_count"]):
+            total_outliers = (
+                self._ensure_numeric(feats["B1_rt_outlier_count"]) +
+                self._ensure_numeric(feats["B3_rt_outlier_count"])
+            )
+            feats["B_response_stability"] = 1.0 / (1.0 + total_outliers)
+        
+        # Task switching efficiency
+        if self._has(feats, ["B1_B2_rt_gap", "B1_rt_mean"]):
+            switching_cost_norm = self._safe_div(feats["B1_B2_rt_gap"], feats["B1_rt_mean"], eps)
+            feats["B_task_switching_efficiency"] = 1.0 / (1.0 + self._ensure_numeric(switching_cost_norm).abs())
+        
+        # Performance decline
+        if self._has(feats, ["B1_rt_adaptation", "B2_rt_adaptation"]):
+            avg_adaptation = (
+                self._ensure_numeric(feats["B1_rt_adaptation"]) +
+                self._ensure_numeric(feats["B2_rt_adaptation"])
+            ) / 2.0
+            feats["B_performance_decline"] = avg_adaptation
+        
+        # Processing speed efficiency
+        if self._has(feats, ["B_overall_rt_mean", "B_overall_acc"]):
+            feats["B_processing_efficiency"] = self._safe_div(
+                feats["B_overall_acc"], 
+                self._safe_log(feats["B_overall_rt_mean"]), 
+                eps
+            )
+        
+        # Sequential memory consistency
+        if self._has(feats, ["B6_acc_rate", "B7_acc_rate", "B8_acc_rate"]):
+            b6 = self._ensure_numeric(feats["B6_acc_rate"])
+            b7 = self._ensure_numeric(feats["B7_acc_rate"])
+            b8 = self._ensure_numeric(feats["B8_acc_rate"])
+            feats["B_sequential_memory_consistency"] = 1.0 - (
+                (b6 - b7).abs() + (b7 - b8).abs() + (b6 - b8).abs()
+            ) / 3.0
+        
         return feats
     
     def _has(self, df: pd.DataFrame, cols: List[str]) -> bool:

@@ -68,7 +68,9 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.90
+            'correlation_threshold': 0.90,
+            'use_domain_features': True,
+            'use_log_transform': True
         }
         
         # Training settings
@@ -77,20 +79,18 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 75,  # Adjusted from 50
-            'early_stopping_rounds_b': 125,  # Adjusted from 100
+            'early_stopping_rounds': 50,
+            'early_stopping_rounds_b': 75,
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.90,  # Relaxed from 0.92
-            'feature_selection_threshold_b': 0.82,  # Relaxed from 0.85
+            'feature_selection_threshold': 0.85,
+            'feature_selection_threshold_b': 0.78,
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': True,  # Changed from False to True
+            'use_ensemble': True,
             'ensemble_top_k': 3,
-            'use_smote_a': True,  # Added for Type A
             'use_smote_b': True,
-            'smote_sampling_strategy_a': 0.3,  # Added for Type A
-            'smote_sampling_strategy_b': 0.3,  # Increased from 0.10
-            'calibration_method': 'oof'  # Changed from holdout to oof
+            'smote_sampling_strategy': 0.30,
+            'use_oof_calibration': True
         }
         
         # LightGBM hyperparameters for Type A
@@ -98,19 +98,19 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 27,  # Relaxed from 19
+            'num_leaves': 31,
             'max_depth': 6,
-            'min_child_samples': 28,  # Relaxed from 35
+            'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.02,
+            'learning_rate': 0.03,
             'n_estimators': 2000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 10.0,  # Reduced from 15.0
+            'scale_pos_weight': 10.0,
             'is_unbalance': False,
-            'reg_alpha': 0.9,  # Relaxed from 1.2
-            'reg_lambda': 0.9,  # Relaxed from 1.2
+            'reg_alpha': 1.2,
+            'reg_lambda': 1.2,
             'min_split_gain': 0.02,
             'n_jobs': 3,
             'verbose': -1,
@@ -123,7 +123,7 @@ class Config:
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 28,
+            'num_leaves': 31,
             'max_depth': 7,
             'min_child_samples': 35,
             'min_child_weight': 0.001,
@@ -132,7 +132,7 @@ class Config:
             'subsample': 0.85,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 12.0,  # Reduced from 20.0
+            'scale_pos_weight': 12.0,
             'is_unbalance': False,
             'reg_alpha': 0.8,
             'reg_lambda': 0.8,

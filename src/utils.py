@@ -204,8 +204,6 @@ def masked_mean_in_set_series(cond_series, val_series, mask_set):
         out = sums / np.where(counts == 0, np.nan, counts)
     return pd.Series(out, index=cond_series.index)
 
-# New functions for temporal pattern extraction
-
 def seq_trend(series):
     """
     Calculate linear trend (slope) of sequence.
@@ -580,3 +578,64 @@ def masked_min_from_csv_series(cond_series, val_series, mask_val):
     with np.errstate(invalid="ignore"):
         out = np.nanmin(np.where(mask, val_arr, np.nan), axis=1)
     return pd.Series(out, index=cond_series.index)
+
+def seq_window_mean(series, window='early'):
+    """
+    Calculate mean of specific window in sequence.
+    
+    Args:
+        series: Pandas Series with comma-separated values
+        window: 'early' (first third), 'mid' (middle third), 'late' (last third)
+        
+    Returns:
+        pd.Series: Window mean values
+    """
+    def calc_window(x):
+        if not x:
+            return np.nan
+        arr = np.fromstring(x, sep=",")
+        n = len(arr)
+        if n < 3:
+            return np.nan
+        
+        if window == 'early':
+            return arr[:n//3].mean()
+        elif window == 'mid':
+            return arr[n//3:2*n//3].mean()
+        elif window == 'late':
+            return arr[2*n//3:].mean()
+        else:
+            return np.nan
+    
+    series_str = series.astype(str).replace('nan', '')
+    return series_str.apply(calc_window)
+
+def seq_error_streak(series, target="0"):
+    """
+    Calculate maximum consecutive error streak.
+    
+    Args:
+        series: Pandas Series with comma-separated values
+        target: Target value indicating error
+        
+    Returns:
+        pd.Series: Maximum error streak lengths
+    """
+    def calc_streak(x):
+        if not x:
+            return 0
+        vals = str(x).split(",")
+        max_streak = 0
+        current_streak = 0
+        
+        for val in vals:
+            if val == target:
+                current_streak += 1
+                max_streak = max(max_streak, current_streak)
+            else:
+                current_streak = 0
+        
+        return max_streak
+    
+    series_str = series.astype(str).replace('nan', '')
+    return series_str.apply(calc_streak)

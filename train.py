@@ -236,9 +236,9 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.82)
+            threshold = config.training.get('feature_selection_threshold_b', 0.78)
         else:
-            threshold = config.training.get('feature_selection_threshold', 0.90)
+            threshold = config.training.get('feature_selection_threshold', 0.85)
         
         selected_features = select_features(X, y, params, threshold=threshold)
         X = X[selected_features]
@@ -248,17 +248,17 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 125)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 75)
     else:
-        early_stopping_rounds = config.training.get('early_stopping_rounds', 75)
+        early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
-    # SMOTE configuration
-    use_smote = config.training.get(f'use_smote_{test_type.lower()}', False)
+    # SMOTE configuration for Type B
+    use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
     if use_smote:
-        smote_strategy = config.training.get(f'smote_sampling_strategy_{test_type.lower()}', 0.3)
-        logger.info(f"SMOTE enabled for Type {test_type} (sampling_strategy={smote_strategy})")
+        smote_strategy = config.training.get('smote_sampling_strategy', 0.30)
+        logger.info(f"SMOTE enabled for Type B (sampling_strategy={smote_strategy})")
     
     cv_metrics = []
     oof_preds = np.zeros(len(X))
@@ -273,7 +273,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Train: {len(X_train)}, Val: {len(X_val)}")
         logger.info(f"Train pos rate: {y_train.mean():.4f}, Val pos rate: {y_val.mean():.4f}")
         
-        # Apply SMOTE
+        # Apply SMOTE for Type B
         if use_smote:
             logger.info(f"Applying SMOTE to training data...")
             smote = SMOTE(
@@ -316,10 +316,9 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
     # Ensemble selection
-    use_ensemble = config.training.get('use_ensemble', False)
+    use_ensemble = config.training.get('use_ensemble', True)
     
     if use_ensemble:
-        # Top-k ensemble selection
         ensemble_top_k = config.training.get('ensemble_top_k', 3)
         
         # Sort by combined score
@@ -333,15 +332,6 @@ def cross_validate(X, y, params, config, test_type='A'):
         for idx in top_k_indices:
             logger.info(f"  Fold {idx+1}: Combined={cv_metrics[idx]['combined']:.6f}")
         
-        # Generate ensemble OOF predictions for calibration
-        ensemble_oof = np.zeros(len(X))
-        for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-            if fold not in top_k_indices:
-                continue
-            X_val = X.iloc[val_idx]
-            val_pred = models[fold].predict(X_val, num_iteration=models[fold].best_iteration)
-            ensemble_oof[val_idx] = val_pred
-        
         # Weight by inverse combined score
         weights = [1.0 / cv_metrics[i]['combined'] for i in top_k_indices]
         weight_sum = sum(weights)
@@ -350,53 +340,21 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Ensemble weights: {[f'{w:.3f}' for w in weights]}")
         
         return_models = (top_k_models, weights)
-        oof_for_calibration = ensemble_oof
     else:
         best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
         best_model = models[best_fold_idx]
         logger.info(f"Single model mode: Using fold {best_fold_idx + 1} "
                    f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
         return_models = best_model
-        oof_for_calibration = oof_preds
     
     # OOF-based calibration
     calibrator = None
-    if config.training.get('use_calibration', False):
-        calibration_method = config.training.get('calibration_method', 'oof')
+    if config.training.get('use_calibration', False) and config.training.get('use_oof_calibration', True):
+        logger.info("Training calibrator using OOF predictions")
         
-        if calibration_method == 'oof':
-            logger.info("Training calibrator using OOF predictions")
-            
-            # Use OOF predictions for calibration
-            calibrator = train_calibrator(y, oof_for_calibration)
-            
-            logger.info("Calibrator trained successfully using OOF method")
-        else:
-            # Fallback to holdout method
-            logger.info("Training calibrator using holdout set approach")
-            
-            holdout_size = config.training.get('calibration_holdout_size', 0.15)
-            X_calib_train, X_calib_holdout, y_calib_train, y_calib_holdout = train_test_split(
-                X, y, test_size=holdout_size, random_state=42, stratify=y
-            )
-            
-            logger.info(f"Calibration: Train={len(X_calib_train)}, Holdout={len(X_calib_holdout)}")
-            
-            # Generate predictions on hold-out set
-            if isinstance(return_models, tuple):
-                models_list, weights_list = return_models
-                holdout_preds = []
-                for model in models_list:
-                    pred = model.predict(X_calib_holdout, num_iteration=model.best_iteration)
-                    holdout_preds.append(pred)
-                holdout_pred = np.average(holdout_preds, axis=0, weights=weights_list)
-            else:
-                holdout_pred = return_models.predict(X_calib_holdout, num_iteration=return_models.best_iteration)
-            
-            # Train calibrator on hold-out set
-            calibrator = train_calibrator(y_calib_holdout, holdout_pred)
-            
-            logger.info("Calibrator trained successfully using holdout set")
+        calibrator = train_calibrator(y, oof_preds)
+        
+        logger.info("Calibrator trained successfully using OOF predictions")
     
     return return_models, cv_metrics, oof_preds, selected_features, calibrator
 
