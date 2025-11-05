@@ -68,9 +68,7 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.90,
-            'use_domain_features': True,
-            'use_log_transform': True
+            'correlation_threshold': 0.93
         }
         
         # Training settings
@@ -80,34 +78,33 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 75,
+            'early_stopping_rounds_b': 100,
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.85,
-            'feature_selection_threshold_b': 0.78,
+            'feature_selection_threshold': 0.90,
+            'feature_selection_threshold_b': 0.88,
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': True,
+            'use_ensemble': False,
             'ensemble_top_k': 3,
-            'use_smote_b': True,
-            'smote_sampling_strategy': 0.30,
-            'use_oof_calibration': True
+            'use_smote_b': False,
+            'smote_sampling_strategy': 0.15
         }
         
-        # LightGBM hyperparameters for Type A
+        # LightGBM hyperparameters for Type A - Experiment #8 Recovery
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 31,
+            'num_leaves': 19,
             'max_depth': 6,
             'min_child_samples': 35,
             'min_child_weight': 0.001,
-            'learning_rate': 0.03,
+            'learning_rate': 0.02,
             'n_estimators': 2000,
             'subsample': 0.8,
             'subsample_freq': 1,
             'colsample_bytree': 0.8,
-            'scale_pos_weight': 10.0,
+            'scale_pos_weight': 8.0,
             'is_unbalance': False,
             'reg_alpha': 1.2,
             'reg_lambda': 1.2,
@@ -118,14 +115,14 @@ class Config:
             'importance_type': 'gain'
         }
         
-        # LightGBM hyperparameters for Type B
+        # LightGBM hyperparameters for Type B - Experiment #8 with SMOTE
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 31,
-            'max_depth': 7,
-            'min_child_samples': 35,
+            'num_leaves': 28,
+            'max_depth': 8,
+            'min_child_samples': 28,
             'min_child_weight': 0.001,
             'learning_rate': 0.025,
             'n_estimators': 2000,

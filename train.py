@@ -11,7 +11,7 @@ import time
 import warnings
 warnings.filterwarnings('ignore')
 
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, brier_score_loss
 from sklearn.feature_selection import SelectFromModel
 from sklearn.isotonic import IsotonicRegression
@@ -182,33 +182,9 @@ def select_features(X, y, params, threshold=0.90):
     
     return selected
 
-def train_calibrator(y_true, y_pred):
-    """
-    Train Isotonic Regression calibrator.
-    
-    Args:
-        y_true: True labels
-        y_pred: Predicted probabilities
-        
-    Returns:
-        Trained calibrator
-    """
-    logger = logging.getLogger(__name__)
-    logger.info("Training Isotonic Regression calibrator")
-    
-    calibrator = IsotonicRegression(out_of_bounds='clip')
-    calibrator.fit(y_pred, y_true)
-    
-    calibrated_pred = calibrator.predict(y_pred)
-    
-    logger.info(f"Before calibration - ECE: {calculate_ece(y_true, y_pred):.6f}")
-    logger.info(f"After calibration - ECE: {calculate_ece(y_true, calibrated_pred):.6f}")
-    
-    return calibrator
-
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation with ensemble and OOF calibration.
+    Perform stratified k-fold cross-validation with ensemble capability.
     
     Args:
         X: Features
@@ -236,9 +212,9 @@ def cross_validate(X, y, params, config, test_type='A'):
     # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
-            threshold = config.training.get('feature_selection_threshold_b', 0.78)
+            threshold = config.training.get('feature_selection_threshold_b', 0.85)
         else:
-            threshold = config.training.get('feature_selection_threshold', 0.85)
+            threshold = config.training.get('feature_selection_threshold', 0.90)
         
         selected_features = select_features(X, y, params, threshold=threshold)
         X = X[selected_features]
@@ -248,7 +224,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     # Early stopping rounds based on test type
     if test_type == 'B':
-        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 75)
+        early_stopping_rounds = config.training.get('early_stopping_rounds_b', 100)
     else:
         early_stopping_rounds = config.training.get('early_stopping_rounds', 50)
     
@@ -257,7 +233,7 @@ def cross_validate(X, y, params, config, test_type='A'):
     # SMOTE configuration for Type B
     use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
     if use_smote:
-        smote_strategy = config.training.get('smote_sampling_strategy', 0.30)
+        smote_strategy = config.training.get('smote_sampling_strategy', 0.15)
         logger.info(f"SMOTE enabled for Type B (sampling_strategy={smote_strategy})")
     
     cv_metrics = []
@@ -287,8 +263,7 @@ def cross_validate(X, y, params, config, test_type='A'):
             model = train_model(X_train_resampled, y_train_resampled, X_val, y_val, 
                               params, early_stopping_rounds, test_type)
         else:
-            model = train_model(X_train, y_train, X_val, y_val, params, 
-                              early_stopping_rounds, test_type)
+            model = train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds, test_type)
         
         models.append(model)
         
@@ -315,48 +290,32 @@ def cross_validate(X, y, params, config, test_type='A'):
         std = metrics_df[metric].std()
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
-    # Ensemble selection
-    use_ensemble = config.training.get('use_ensemble', True)
+    best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
+    best_model = models[best_fold_idx]
+    logger.info(f"Best model from fold {best_fold_idx + 1} "
+               f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
     
-    if use_ensemble:
-        ensemble_top_k = config.training.get('ensemble_top_k', 3)
-        
-        # Sort by combined score
-        fold_scores = [(i, m['combined']) for i, m in enumerate(cv_metrics)]
-        fold_scores.sort(key=lambda x: x[1])
-        
-        top_k_indices = [idx for idx, _ in fold_scores[:ensemble_top_k]]
-        top_k_models = [models[i] for i in top_k_indices]
-        
-        logger.info(f"Top-{ensemble_top_k} ensemble: Folds {[i+1 for i in top_k_indices]}")
-        for idx in top_k_indices:
-            logger.info(f"  Fold {idx+1}: Combined={cv_metrics[idx]['combined']:.6f}")
-        
-        # Weight by inverse combined score
-        weights = [1.0 / cv_metrics[i]['combined'] for i in top_k_indices]
-        weight_sum = sum(weights)
-        weights = [w / weight_sum for w in weights]
-        
-        logger.info(f"Ensemble weights: {[f'{w:.3f}' for w in weights]}")
-        
-        return_models = (top_k_models, weights)
-    else:
-        best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
-        best_model = models[best_fold_idx]
-        logger.info(f"Single model mode: Using fold {best_fold_idx + 1} "
-                   f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
-        return_models = best_model
+    # Use best model OOF for calibration
+    oof_for_calibration = oof_preds
     
-    # OOF-based calibration
+    # Calibrator (optional)
     calibrator = None
-    if config.training.get('use_calibration', False) and config.training.get('use_oof_calibration', True):
-        logger.info("Training calibrator using OOF predictions")
+    if config.training['use_calibration']:
+        logger.info("Training probability calibrator...")
+        calibrator = IsotonicRegression(out_of_bounds='clip')
+        calibrator.fit(oof_for_calibration, y)
         
-        calibrator = train_calibrator(y, oof_preds)
+        calibrated_preds = calibrator.transform(oof_for_calibration)
+        calibrated_metrics = calculate_combined_score(y, calibrated_preds)
         
-        logger.info("Calibrator trained successfully using OOF predictions")
+        logger.info(f"After calibration - AUC: {calibrated_metrics['auc']:.6f}, "
+                   f"Brier: {calibrated_metrics['brier']:.6f}, "
+                   f"ECE: {calibrated_metrics['ece']:.6f}, "
+                   f"Combined: {calibrated_metrics['combined']:.6f}")
+    else:
+        logger.info("Calibration disabled")
     
-    return return_models, cv_metrics, oof_preds, selected_features, calibrator
+    return best_model, cv_metrics, oof_preds, selected_features, calibrator
 
 def prepare_features(df, test_type='A'):
     """
@@ -477,18 +436,17 @@ def main():
         joblib.dump(ensemble_models_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
         
-        feature_names_path_a = config.paths['feature_names_a']
-        save_feature_names(selected_features_a, feature_names_path_a)
-        logger.info(f"Feature names A saved to {feature_names_path_a}")
-        
-        # Save calibrator A if exists
         if calibrator_a is not None:
             calibrator_path_a = config.paths['model_dir'] / 'calibrator_A.pkl'
             joblib.dump(calibrator_a, calibrator_path_a)
             logger.info(f"Calibrator A saved to {calibrator_path_a}")
         
+        feature_names_path_a = config.paths['feature_names_a']
+        save_feature_names(selected_features_a, feature_names_path_a)
+        logger.info(f"Feature names A saved to {feature_names_path_a}")
+        
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model")
+        logger.info("STEP 5: Training Type B model with SMOTE")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
@@ -508,15 +466,14 @@ def main():
         joblib.dump(ensemble_models_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
         
-        feature_names_path_b = config.paths['feature_names_b']
-        save_feature_names(selected_features_b, feature_names_path_b)
-        logger.info(f"Feature names B saved to {feature_names_path_b}")
-        
-        # Save calibrator B if exists
         if calibrator_b is not None:
             calibrator_path_b = config.paths['model_dir'] / 'calibrator_B.pkl'
             joblib.dump(calibrator_b, calibrator_path_b)
             logger.info(f"Calibrator B saved to {calibrator_path_b}")
+        
+        feature_names_path_b = config.paths['feature_names_b']
+        save_feature_names(selected_features_b, feature_names_path_b)
+        logger.info(f"Feature names B saved to {feature_names_path_b}")
         
         logger.info("="*60)
         logger.info("TRAINING COMPLETE")
@@ -535,29 +492,15 @@ def main():
         logger.info("="*60)
         
         # Feature importance logging
-        if isinstance(ensemble_models_a, tuple):
-            models_a, weights_a = ensemble_models_a
-            feature_importance_a = pd.DataFrame({
-                'feature': selected_features_a,
-                'importance': models_a[0].feature_importance(importance_type='gain')
-            }).sort_values('importance', ascending=False)
-        else:
-            feature_importance_a = pd.DataFrame({
-                'feature': selected_features_a,
-                'importance': ensemble_models_a.feature_importance(importance_type='gain')
-            }).sort_values('importance', ascending=False)
+        feature_importance_a = pd.DataFrame({
+            'feature': selected_features_a,
+            'importance': ensemble_models_a.feature_importance(importance_type='gain')
+        }).sort_values('importance', ascending=False)
         
-        if isinstance(ensemble_models_b, tuple):
-            models_b, weights_b = ensemble_models_b
-            feature_importance_b = pd.DataFrame({
-                'feature': selected_features_b,
-                'importance': models_b[0].feature_importance(importance_type='gain')
-            }).sort_values('importance', ascending=False)
-        else:
-            feature_importance_b = pd.DataFrame({
-                'feature': selected_features_b,
-                'importance': ensemble_models_b.feature_importance(importance_type='gain')
-            }).sort_values('importance', ascending=False)
+        feature_importance_b = pd.DataFrame({
+            'feature': selected_features_b,
+            'importance': ensemble_models_b.feature_importance(importance_type='gain')
+        }).sort_values('importance', ascending=False)
         
         logger.info("Top 15 features for Type A:")
         for idx, row in feature_importance_a.head(15).iterrows():

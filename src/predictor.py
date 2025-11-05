@@ -1,12 +1,12 @@
 # src/predictor.py
-# Model inference engine with batch processing and ensemble support
+# Model inference engine with batch processing
 
 import joblib
 import numpy as np
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple, Union
+from typing import Optional, Dict, List
 import lightgbm as lgb
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class Predictor:
     
     Handles model loading, batch prediction, and feature alignment
     for optimized inference performance. Supports both single models
-    and ensemble models with optional calibration.
+    and ensemble models.
     """
     
     def __init__(self, config):
@@ -69,26 +69,25 @@ class Predictor:
     def _load_calibrators(self) -> None:
         """Load calibrators from disk if available."""
         if not self.use_calibration:
-            logger.info("Calibration disabled - not loading calibrators")
+            logger.info("Calibration disabled in config")
             return
         
-        # Load calibrator A
-        calibrator_path_a = self.config.paths['model_dir'] / 'calibrator_A.pkl'
-        if calibrator_path_a.exists():
-            logger.info(f"Loading calibrator A from {calibrator_path_a}")
-            self.calibrator_a = joblib.load(calibrator_path_a)
+        calibrator_a_path = self.config.paths['model_dir'] / 'calibrator_A.pkl'
+        calibrator_b_path = self.config.paths['model_dir'] / 'calibrator_B.pkl'
+        
+        if calibrator_a_path.exists():
+            logger.info(f"Loading calibrator A from {calibrator_a_path}")
+            self.calibrator_a = joblib.load(calibrator_a_path)
             logger.info("Calibrator A loaded successfully")
         else:
-            logger.info("Calibrator A not found")
+            logger.info(f"Calibrator A not found at {calibrator_a_path}")
         
-        # Load calibrator B
-        calibrator_path_b = self.config.paths['model_dir'] / 'calibrator_B.pkl'
-        if calibrator_path_b.exists():
-            logger.info(f"Loading calibrator B from {calibrator_path_b}")
-            self.calibrator_b = joblib.load(calibrator_path_b)
+        if calibrator_b_path.exists():
+            logger.info(f"Loading calibrator B from {calibrator_b_path}")
+            self.calibrator_b = joblib.load(calibrator_b_path)
             logger.info("Calibrator B loaded successfully")
         else:
-            logger.info("Calibrator B not found")
+            logger.info(f"Calibrator B not found at {calibrator_b_path}")
     
     def _load_feature_names(self) -> None:
         """Load feature names from disk."""
@@ -101,19 +100,9 @@ class Predictor:
             with open(feature_names_a_path, 'r') as f:
                 self.feature_names_a = [line.strip() for line in f if line.strip()]
             logger.info(f"Model A expects {len(self.feature_names_a)} features")
-        elif self.model_a:
-            # Try to get from model if it's not an ensemble
-            if isinstance(self.model_a, tuple):
-                models, _ = self.model_a
-                if hasattr(models[0], 'feature_name_'):
-                    self.feature_names_a = list(models[0].feature_name_())
-            elif hasattr(self.model_a, 'feature_name_'):
-                self.feature_names_a = list(self.model_a.feature_name_())
-            
-            if self.feature_names_a:
-                logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
-            else:
-                logger.warning("Feature names A not found")
+        elif self.model_a and hasattr(self.model_a, 'feature_name_'):
+            self.feature_names_a = list(self.model_a.feature_name_())
+            logger.info(f"Model A feature names from model: {len(self.feature_names_a)} features")
         else:
             logger.warning("Feature names A not found")
         
@@ -123,18 +112,9 @@ class Predictor:
             with open(feature_names_b_path, 'r') as f:
                 self.feature_names_b = [line.strip() for line in f if line.strip()]
             logger.info(f"Model B expects {len(self.feature_names_b)} features")
-        elif self.model_b:
-            if isinstance(self.model_b, tuple):
-                models, _ = self.model_b
-                if hasattr(models[0], 'feature_name_'):
-                    self.feature_names_b = list(models[0].feature_name_())
-            elif hasattr(self.model_b, 'feature_name_'):
-                self.feature_names_b = list(self.model_b.feature_name_())
-            
-            if self.feature_names_b:
-                logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
-            else:
-                logger.warning("Feature names B not found")
+        elif self.model_b and hasattr(self.model_b, 'feature_name_'):
+            self.feature_names_b = list(self.model_b.feature_name_())
+            logger.info(f"Model B feature names from model: {len(self.feature_names_b)} features")
         else:
             logger.warning("Feature names B not found")
     
@@ -158,9 +138,9 @@ class Predictor:
             pred_a = self._batch_predict(self.model_a, X_a)
             
             # Apply calibration if available
-            if self.calibrator_a is not None:
+            if self.use_calibration and self.calibrator_a is not None:
                 logger.info("Applying calibration to Type A predictions")
-                pred_a = self.calibrator_a.predict(pred_a)
+                pred_a = self.calibrator_a.transform(pred_a)
                 pred_a = np.clip(pred_a, 0.0, 1.0)
             
             predictions['A'] = pred_a
@@ -175,9 +155,9 @@ class Predictor:
             pred_b = self._batch_predict(self.model_b, X_b)
             
             # Apply calibration if available
-            if self.calibrator_b is not None:
+            if self.use_calibration and self.calibrator_b is not None:
                 logger.info("Applying calibration to Type B predictions")
-                pred_b = self.calibrator_b.predict(pred_b)
+                pred_b = self.calibrator_b.transform(pred_b)
                 pred_b = np.clip(pred_b, 0.0, 1.0)
             
             predictions['B'] = pred_b
@@ -187,14 +167,14 @@ class Predictor:
         
         return predictions
     
-    def _align_to_model(self, df: pd.DataFrame, model: Union[object, Tuple], 
+    def _align_to_model(self, df: pd.DataFrame, model: object, 
                         feature_names: Optional[List[str]], test_type: str) -> pd.DataFrame:
         """
         Align features to model expectations.
         
         Args:
             df: DataFrame with features
-            model: Trained model (single or tuple for ensemble)
+            model: Trained model (single or list for ensemble)
             feature_names: Expected feature names
             test_type: 'A' or 'B' for logging
             
@@ -247,13 +227,12 @@ class Predictor:
         
         return X
     
-    def _batch_predict(self, model: Union[object, Tuple], X: pd.DataFrame) -> np.ndarray:
+    def _batch_predict(self, model: object, X: pd.DataFrame) -> np.ndarray:
         """
         Generate predictions with batch processing.
-        Supports both single models and ensemble models.
         
         Args:
-            model: Trained model (single or tuple for ensemble)
+            model: Trained model
             X: Feature matrix
             
         Returns:
@@ -266,34 +245,15 @@ class Predictor:
         n_batches = (n_samples + batch_size - 1) // batch_size
         logger.info(f"Processing {n_samples} samples in {n_batches} batches")
         
-        # Check if ensemble
-        is_ensemble = isinstance(model, tuple)
-        if is_ensemble:
-            models, weights = model
-            logger.info(f"Using ensemble of {len(models)} models")
-        
         for i in range(0, n_samples, batch_size):
             end_idx = min(i + batch_size, n_samples)
             batch = X.iloc[i:end_idx]
             
-            if is_ensemble:
-                # Ensemble prediction
-                batch_preds = []
-                for m in models:
-                    if hasattr(m, 'predict_proba'):
-                        pred = m.predict_proba(batch)[:, 1]
-                    else:
-                        pred = m.predict(batch)
-                    batch_preds.append(pred)
-                
-                # Weighted average
-                batch_pred = np.average(batch_preds, axis=0, weights=weights)
+            # Single model prediction
+            if hasattr(model, 'predict_proba'):
+                batch_pred = model.predict_proba(batch)[:, 1]
             else:
-                # Single model prediction
-                if hasattr(model, 'predict_proba'):
-                    batch_pred = model.predict_proba(batch)[:, 1]
-                else:
-                    batch_pred = model.predict(batch)
+                batch_pred = model.predict(batch)
             
             predictions[i:end_idx] = batch_pred
             
