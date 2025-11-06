@@ -1,5 +1,5 @@
 # src/preprocessor.py
-# Data preprocessing pipeline with statistical feature extraction
+# Data preprocessing pipeline with optimized statistical feature extraction
 
 import pandas as pd
 import numpy as np
@@ -9,7 +9,7 @@ from .utils import (
     convert_age, split_testdate, seq_mean, seq_std, seq_rate,
     masked_mean_from_csv_series, masked_mean_in_set_series,
     seq_trend, seq_range, seq_min, seq_max, seq_median,
-    seq_q25, seq_q75, seq_iqr, seq_skew, seq_kurtosis,
+    seq_q25, seq_q75, seq_iqr,
     seq_change_rate, seq_first_half_mean, seq_second_half_mean,
     seq_consistency, seq_outlier_count,
     masked_std_from_csv_series, masked_max_from_csv_series, masked_min_from_csv_series
@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 
 class Preprocessor:
     """
-    Data preprocessing pipeline with comprehensive statistical and temporal feature extraction.
+    Data preprocessing pipeline with optimized temporal feature extraction.
     
-    Includes distribution moments (skewness, kurtosis) and pattern detection.
+    Removed high-cost operations (skewness, kurtosis) to meet 30min constraint.
+    Focus on essential statistical and temporal patterns.
     """
     
     def __init__(self, config):
@@ -37,7 +38,7 @@ class Preprocessor:
         
     def preprocess_a(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Preprocess test type A data with comprehensive statistical features.
+        Preprocess test type A data with optimized temporal features.
         
         Args:
             df: Type A data
@@ -58,7 +59,7 @@ class Preprocessor:
         
         feats = pd.DataFrame(index=df.index)
         
-        logger.info("Step 2: A1 feature generation with distribution moments")
+        logger.info("Step 2: A1 feature generation")
         feats["A1_resp_rate"] = seq_rate(df["A1-3"], "1")
         feats["A1_rt_mean"] = seq_mean(df["A1-4"])
         feats["A1_rt_std"] = seq_std(df["A1-4"])
@@ -69,32 +70,21 @@ class Preprocessor:
         feats["A1_rt_fast"] = masked_mean_from_csv_series(df["A1-2"], df["A1-4"], 3)
         feats["A1_rt_speed_diff"] = feats["A1_rt_slow"] - feats["A1_rt_fast"]
         
-        # Temporal patterns for A1
+        # Optimized temporal patterns for A1
         feats["A1_rt_trend"] = seq_trend(df["A1-4"])
         feats["A1_rt_range"] = seq_range(df["A1-4"])
-        feats["A1_rt_min"] = seq_min(df["A1-4"])
-        feats["A1_rt_max"] = seq_max(df["A1-4"])
         feats["A1_rt_median"] = seq_median(df["A1-4"])
-        feats["A1_rt_q25"] = seq_q25(df["A1-4"])
-        feats["A1_rt_q75"] = seq_q75(df["A1-4"])
         feats["A1_rt_iqr"] = seq_iqr(df["A1-4"])
         feats["A1_rt_consistency"] = seq_consistency(df["A1-4"])
         feats["A1_rt_outlier_count"] = seq_outlier_count(df["A1-4"])
         feats["A1_rt_first_half"] = seq_first_half_mean(df["A1-4"])
         feats["A1_rt_second_half"] = seq_second_half_mean(df["A1-4"])
-        feats["A1_rt_change_rate"] = seq_change_rate(df["A1-4"])
         
-        # Distribution moments for A1
-        feats["A1_rt_skew"] = seq_skew(df["A1-4"])
-        feats["A1_rt_kurtosis"] = seq_kurtosis(df["A1-4"])
-        
-        # Conditional variability
+        # Conditional variability (selective)
         feats["A1_rt_left_std"] = masked_std_from_csv_series(df["A1-1"], df["A1-4"], 1)
         feats["A1_rt_right_std"] = masked_std_from_csv_series(df["A1-1"], df["A1-4"], 2)
-        feats["A1_rt_left_max"] = masked_max_from_csv_series(df["A1-1"], df["A1-4"], 1)
-        feats["A1_rt_right_max"] = masked_max_from_csv_series(df["A1-1"], df["A1-4"], 2)
         
-        logger.info("Step 3: A2 feature generation with distribution moments")
+        logger.info("Step 3: A2 feature generation")
         feats["A2_resp_rate"] = seq_rate(df["A2-3"], "1")
         feats["A2_rt_mean"] = seq_mean(df["A2-4"])
         feats["A2_rt_std"] = seq_std(df["A2-4"])
@@ -103,26 +93,17 @@ class Preprocessor:
         feats["A2_rt_cond2_diff"] = masked_mean_from_csv_series(df["A2-2"], df["A2-4"], 1) - \
                                     masked_mean_from_csv_series(df["A2-2"], df["A2-4"], 3)
         
-        # Temporal patterns for A2
+        # Optimized temporal patterns for A2
         feats["A2_rt_trend"] = seq_trend(df["A2-4"])
         feats["A2_rt_range"] = seq_range(df["A2-4"])
-        feats["A2_rt_min"] = seq_min(df["A2-4"])
-        feats["A2_rt_max"] = seq_max(df["A2-4"])
         feats["A2_rt_median"] = seq_median(df["A2-4"])
-        feats["A2_rt_q25"] = seq_q25(df["A2-4"])
-        feats["A2_rt_q75"] = seq_q75(df["A2-4"])
         feats["A2_rt_iqr"] = seq_iqr(df["A2-4"])
         feats["A2_rt_consistency"] = seq_consistency(df["A2-4"])
         feats["A2_rt_change_rate"] = seq_change_rate(df["A2-4"])
         feats["A2_rt_first_half"] = seq_first_half_mean(df["A2-4"])
         feats["A2_rt_second_half"] = seq_second_half_mean(df["A2-4"])
-        feats["A2_rt_outlier_count"] = seq_outlier_count(df["A2-4"])
         
-        # Distribution moments for A2
-        feats["A2_rt_skew"] = seq_skew(df["A2-4"])
-        feats["A2_rt_kurtosis"] = seq_kurtosis(df["A2-4"])
-        
-        logger.info("Step 4: A3 feature generation with pattern analysis")
+        logger.info("Step 4: A3 feature generation")
         s = df["A3-5"].fillna("")
         total = s.apply(lambda x: len(x.split(",")) if x else 0)
         valid = s.apply(lambda x: sum(v in {"1", "2"} for v in x.split(",")) if x else 0)
@@ -140,24 +121,14 @@ class Preprocessor:
         feats["A3_rt_side_diff"] = masked_mean_from_csv_series(df["A3-3"], df["A3-7"], 1) - \
                                    masked_mean_from_csv_series(df["A3-3"], df["A3-7"], 2)
         
-        # Temporal patterns for A3
+        # Optimized temporal patterns for A3
         feats["A3_rt_trend"] = seq_trend(df["A3-7"])
         feats["A3_rt_range"] = seq_range(df["A3-7"])
-        feats["A3_rt_min"] = seq_min(df["A3-7"])
-        feats["A3_rt_max"] = seq_max(df["A3-7"])
         feats["A3_rt_median"] = seq_median(df["A3-7"])
-        feats["A3_rt_q25"] = seq_q25(df["A3-7"])
-        feats["A3_rt_q75"] = seq_q75(df["A3-7"])
-        feats["A3_rt_iqr"] = seq_iqr(df["A3-7"])
         feats["A3_rt_consistency"] = seq_consistency(df["A3-7"])
         feats["A3_rt_outlier_count"] = seq_outlier_count(df["A3-7"])
-        feats["A3_rt_change_rate"] = seq_change_rate(df["A3-7"])
         
-        # Distribution moments for A3
-        feats["A3_rt_skew"] = seq_skew(df["A3-7"])
-        feats["A3_rt_kurtosis"] = seq_kurtosis(df["A3-7"])
-        
-        logger.info("Step 5: A4 feature generation with stroop analysis")
+        logger.info("Step 5: A4 feature generation")
         feats["A4_acc_rate"] = seq_rate(df["A4-3"], "1")
         feats["A4_resp2_rate"] = seq_rate(df["A4-4"], "1")
         feats["A4_rt_mean"] = seq_mean(df["A4-5"])
@@ -167,28 +138,14 @@ class Preprocessor:
         feats["A4_rt_color_diff"] = masked_mean_from_csv_series(df["A4-2"], df["A4-5"], 1) - \
                                     masked_mean_from_csv_series(df["A4-2"], df["A4-5"], 2)
         
-        # Temporal patterns for A4
+        # Optimized temporal patterns for A4
         feats["A4_rt_trend"] = seq_trend(df["A4-5"])
         feats["A4_rt_range"] = seq_range(df["A4-5"])
-        feats["A4_rt_min"] = seq_min(df["A4-5"])
-        feats["A4_rt_max"] = seq_max(df["A4-5"])
         feats["A4_rt_median"] = seq_median(df["A4-5"])
-        feats["A4_rt_q25"] = seq_q25(df["A4-5"])
-        feats["A4_rt_q75"] = seq_q75(df["A4-5"])
-        feats["A4_rt_iqr"] = seq_iqr(df["A4-5"])
         feats["A4_rt_consistency"] = seq_consistency(df["A4-5"])
         feats["A4_rt_change_rate"] = seq_change_rate(df["A4-5"])
         feats["A4_rt_first_half"] = seq_first_half_mean(df["A4-5"])
         feats["A4_rt_second_half"] = seq_second_half_mean(df["A4-5"])
-        feats["A4_rt_outlier_count"] = seq_outlier_count(df["A4-5"])
-        
-        # Distribution moments for A4
-        feats["A4_rt_skew"] = seq_skew(df["A4-5"])
-        feats["A4_rt_kurtosis"] = seq_kurtosis(df["A4-5"])
-        
-        # Stroop effect variability
-        feats["A4_stroop_std"] = masked_std_from_csv_series(df["A4-1"], df["A4-5"], 2)
-        feats["A4_stroop_max"] = masked_max_from_csv_series(df["A4-1"], df["A4-5"], 2)
         
         logger.info("Step 6: A5 feature generation")
         feats["A5_acc_rate"] = seq_rate(df["A5-2"], "1")
@@ -200,7 +157,6 @@ class Preprocessor:
         if "A5-2" in df.columns:
             feats["A5_acc_consistency"] = seq_consistency(df["A5-2"])
             feats["A5_acc_trend"] = seq_trend(df["A5-2"])
-            feats["A5_acc_skew"] = seq_skew(df["A5-2"])
         
         logger.info("Step 7: Drop sequence columns and concat")
         seq_cols = [
@@ -218,7 +174,7 @@ class Preprocessor:
     
     def preprocess_b(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Preprocess test type B data with comprehensive statistical features.
+        Preprocess test type B data with optimized temporal features.
         
         Args:
             df: Type B data
@@ -239,156 +195,96 @@ class Preprocessor:
         
         feats = pd.DataFrame(index=df.index)
         
-        logger.info("Step 2: B1 feature generation with distribution moments")
+        logger.info("Step 2: B1 feature generation")
         feats["B1_acc_task1"] = seq_rate(df["B1-1"], "1")
         feats["B1_rt_mean"] = seq_mean(df["B1-2"])
         feats["B1_rt_std"] = seq_std(df["B1-2"])
         feats["B1_acc_task2"] = seq_rate(df["B1-3"], "1")
         
-        # Temporal patterns for B1
+        # Optimized temporal patterns for B1
         feats["B1_rt_trend"] = seq_trend(df["B1-2"])
         feats["B1_rt_range"] = seq_range(df["B1-2"])
-        feats["B1_rt_min"] = seq_min(df["B1-2"])
-        feats["B1_rt_max"] = seq_max(df["B1-2"])
         feats["B1_rt_median"] = seq_median(df["B1-2"])
-        feats["B1_rt_q25"] = seq_q25(df["B1-2"])
-        feats["B1_rt_q75"] = seq_q75(df["B1-2"])
-        feats["B1_rt_iqr"] = seq_iqr(df["B1-2"])
         feats["B1_rt_consistency"] = seq_consistency(df["B1-2"])
         feats["B1_rt_change_rate"] = seq_change_rate(df["B1-2"])
         feats["B1_rt_first_half"] = seq_first_half_mean(df["B1-2"])
         feats["B1_rt_second_half"] = seq_second_half_mean(df["B1-2"])
         feats["B1_rt_outlier_count"] = seq_outlier_count(df["B1-2"])
         
-        # Distribution moments for B1
-        feats["B1_rt_skew"] = seq_skew(df["B1-2"])
-        feats["B1_rt_kurtosis"] = seq_kurtosis(df["B1-2"])
-        
         # Task consistency
         feats["B1_acc_task1_consistency"] = seq_consistency(df["B1-1"])
         feats["B1_acc_task2_consistency"] = seq_consistency(df["B1-3"])
-        feats["B1_acc_task1_trend"] = seq_trend(df["B1-1"])
-        feats["B1_acc_task2_trend"] = seq_trend(df["B1-3"])
         
-        logger.info("Step 3: B2 feature generation with distribution moments")
+        logger.info("Step 3: B2 feature generation")
         feats["B2_acc_task1"] = seq_rate(df["B2-1"], "1")
         feats["B2_rt_mean"] = seq_mean(df["B2-2"])
         feats["B2_rt_std"] = seq_std(df["B2-2"])
         feats["B2_acc_task2"] = seq_rate(df["B2-3"], "1")
         
-        # Temporal patterns for B2
+        # Optimized temporal patterns for B2
         feats["B2_rt_trend"] = seq_trend(df["B2-2"])
         feats["B2_rt_range"] = seq_range(df["B2-2"])
-        feats["B2_rt_min"] = seq_min(df["B2-2"])
-        feats["B2_rt_max"] = seq_max(df["B2-2"])
         feats["B2_rt_median"] = seq_median(df["B2-2"])
-        feats["B2_rt_q25"] = seq_q25(df["B2-2"])
-        feats["B2_rt_q75"] = seq_q75(df["B2-2"])
-        feats["B2_rt_iqr"] = seq_iqr(df["B2-2"])
         feats["B2_rt_consistency"] = seq_consistency(df["B2-2"])
         feats["B2_rt_change_rate"] = seq_change_rate(df["B2-2"])
         feats["B2_rt_first_half"] = seq_first_half_mean(df["B2-2"])
         feats["B2_rt_second_half"] = seq_second_half_mean(df["B2-2"])
-        feats["B2_rt_outlier_count"] = seq_outlier_count(df["B2-2"])
-        
-        # Distribution moments for B2
-        feats["B2_rt_skew"] = seq_skew(df["B2-2"])
-        feats["B2_rt_kurtosis"] = seq_kurtosis(df["B2-2"])
         
         # Task consistency
         feats["B2_acc_task1_consistency"] = seq_consistency(df["B2-1"])
         feats["B2_acc_task2_consistency"] = seq_consistency(df["B2-3"])
-        feats["B2_acc_task1_trend"] = seq_trend(df["B2-1"])
-        feats["B2_acc_task2_trend"] = seq_trend(df["B2-3"])
         
-        logger.info("Step 4: B3 feature generation with distribution moments")
+        logger.info("Step 4: B3 feature generation")
         feats["B3_acc_rate"] = seq_rate(df["B3-1"], "1")
         feats["B3_rt_mean"] = seq_mean(df["B3-2"])
         feats["B3_rt_std"] = seq_std(df["B3-2"])
         
-        # Temporal patterns for B3
+        # Optimized temporal patterns for B3
         feats["B3_rt_trend"] = seq_trend(df["B3-2"])
         feats["B3_rt_range"] = seq_range(df["B3-2"])
-        feats["B3_rt_min"] = seq_min(df["B3-2"])
-        feats["B3_rt_max"] = seq_max(df["B3-2"])
         feats["B3_rt_median"] = seq_median(df["B3-2"])
-        feats["B3_rt_q25"] = seq_q25(df["B3-2"])
-        feats["B3_rt_q75"] = seq_q75(df["B3-2"])
-        feats["B3_rt_iqr"] = seq_iqr(df["B3-2"])
         feats["B3_rt_consistency"] = seq_consistency(df["B3-2"])
         feats["B3_rt_outlier_count"] = seq_outlier_count(df["B3-2"])
-        feats["B3_rt_change_rate"] = seq_change_rate(df["B3-2"])
-        feats["B3_rt_first_half"] = seq_first_half_mean(df["B3-2"])
-        feats["B3_rt_second_half"] = seq_second_half_mean(df["B3-2"])
-        
-        # Distribution moments for B3
-        feats["B3_rt_skew"] = seq_skew(df["B3-2"])
-        feats["B3_rt_kurtosis"] = seq_kurtosis(df["B3-2"])
         
         feats["B3_acc_consistency"] = seq_consistency(df["B3-1"])
         feats["B3_acc_trend"] = seq_trend(df["B3-1"])
-        feats["B3_acc_skew"] = seq_skew(df["B3-1"])
         
-        logger.info("Step 5: B4 feature generation with distribution moments")
+        logger.info("Step 5: B4 feature generation")
         feats["B4_acc_rate"] = seq_rate(df["B4-1"], "1")
         feats["B4_rt_mean"] = seq_mean(df["B4-2"])
         feats["B4_rt_std"] = seq_std(df["B4-2"])
         
-        # Temporal patterns for B4
+        # Optimized temporal patterns for B4
         feats["B4_rt_trend"] = seq_trend(df["B4-2"])
         feats["B4_rt_range"] = seq_range(df["B4-2"])
-        feats["B4_rt_min"] = seq_min(df["B4-2"])
-        feats["B4_rt_max"] = seq_max(df["B4-2"])
         feats["B4_rt_median"] = seq_median(df["B4-2"])
-        feats["B4_rt_q25"] = seq_q25(df["B4-2"])
-        feats["B4_rt_q75"] = seq_q75(df["B4-2"])
-        feats["B4_rt_iqr"] = seq_iqr(df["B4-2"])
         feats["B4_rt_consistency"] = seq_consistency(df["B4-2"])
         feats["B4_rt_change_rate"] = seq_change_rate(df["B4-2"])
-        feats["B4_rt_outlier_count"] = seq_outlier_count(df["B4-2"])
-        
-        # Distribution moments for B4
-        feats["B4_rt_skew"] = seq_skew(df["B4-2"])
-        feats["B4_rt_kurtosis"] = seq_kurtosis(df["B4-2"])
         
         feats["B4_acc_consistency"] = seq_consistency(df["B4-1"])
         feats["B4_acc_trend"] = seq_trend(df["B4-1"])
-        feats["B4_acc_skew"] = seq_skew(df["B4-1"])
         
-        logger.info("Step 6: B5 feature generation with distribution moments")
+        logger.info("Step 6: B5 feature generation")
         feats["B5_acc_rate"] = seq_rate(df["B5-1"], "1")
         feats["B5_rt_mean"] = seq_mean(df["B5-2"])
         feats["B5_rt_std"] = seq_std(df["B5-2"])
         
-        # Temporal patterns for B5
+        # Optimized temporal patterns for B5
         feats["B5_rt_trend"] = seq_trend(df["B5-2"])
         feats["B5_rt_range"] = seq_range(df["B5-2"])
-        feats["B5_rt_min"] = seq_min(df["B5-2"])
-        feats["B5_rt_max"] = seq_max(df["B5-2"])
         feats["B5_rt_median"] = seq_median(df["B5-2"])
-        feats["B5_rt_q25"] = seq_q25(df["B5-2"])
-        feats["B5_rt_q75"] = seq_q75(df["B5-2"])
-        feats["B5_rt_iqr"] = seq_iqr(df["B5-2"])
         feats["B5_rt_consistency"] = seq_consistency(df["B5-2"])
         feats["B5_rt_change_rate"] = seq_change_rate(df["B5-2"])
-        feats["B5_rt_outlier_count"] = seq_outlier_count(df["B5-2"])
-        feats["B5_rt_first_half"] = seq_first_half_mean(df["B5-2"])
-        feats["B5_rt_second_half"] = seq_second_half_mean(df["B5-2"])
-        
-        # Distribution moments for B5
-        feats["B5_rt_skew"] = seq_skew(df["B5-2"])
-        feats["B5_rt_kurtosis"] = seq_kurtosis(df["B5-2"])
         
         feats["B5_acc_consistency"] = seq_consistency(df["B5-1"])
         feats["B5_acc_trend"] = seq_trend(df["B5-1"])
-        feats["B5_acc_skew"] = seq_skew(df["B5-1"])
         
-        logger.info("Step 7: B6~B8 feature generation with pattern analysis")
+        logger.info("Step 7: B6~B8 feature generation")
         feats["B6_acc_rate"] = seq_rate(df["B6"], "1")
         feats["B7_acc_rate"] = seq_rate(df["B7"], "1")
         feats["B8_acc_rate"] = seq_rate(df["B8"], "1")
         
-        # Temporal patterns for B6-B8
+        # Optimized temporal patterns for B6-B8
         feats["B6_acc_consistency"] = seq_consistency(df["B6"])
         feats["B7_acc_consistency"] = seq_consistency(df["B7"])
         feats["B8_acc_consistency"] = seq_consistency(df["B8"])
@@ -396,19 +292,6 @@ class Preprocessor:
         feats["B6_acc_trend"] = seq_trend(df["B6"])
         feats["B7_acc_trend"] = seq_trend(df["B7"])
         feats["B8_acc_trend"] = seq_trend(df["B8"])
-        
-        # Distribution moments for B6-B8
-        feats["B6_acc_skew"] = seq_skew(df["B6"])
-        feats["B7_acc_skew"] = seq_skew(df["B7"])
-        feats["B8_acc_skew"] = seq_skew(df["B8"])
-        
-        feats["B6_acc_kurtosis"] = seq_kurtosis(df["B6"])
-        feats["B7_acc_kurtosis"] = seq_kurtosis(df["B7"])
-        feats["B8_acc_kurtosis"] = seq_kurtosis(df["B8"])
-        
-        feats["B6_acc_outliers"] = seq_outlier_count(df["B6"])
-        feats["B7_acc_outliers"] = seq_outlier_count(df["B7"])
-        feats["B8_acc_outliers"] = seq_outlier_count(df["B8"])
         
         logger.info("Step 8: Drop sequence columns and concat")
         seq_cols = [

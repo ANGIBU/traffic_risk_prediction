@@ -50,7 +50,7 @@ class Config:
         
         # Inference parameters
         self.inference = {
-            'batch_size': 15000,
+            'batch_size': 30000,  # Doubled for faster processing
             'num_threads': 3,
             'use_progress': False
         }
@@ -77,11 +77,11 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 80,  # Reduced from 100
+            'early_stopping_rounds': 30,  # Reduced for faster training
+            'early_stopping_rounds_b': 50,  # Reduced from 80
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.92,  # Relaxed from 0.90
-            'feature_selection_threshold_b': 0.90,  # Relaxed from 0.88
+            'feature_selection_threshold': 0.85,  # More aggressive selection
+            'feature_selection_threshold_b': 0.80,  # More aggressive selection
             'use_calibration': True,
             'remove_correlated_features': True,
             'use_ensemble': True,  # Enable ensemble
@@ -101,7 +101,7 @@ class Config:
             'min_child_samples': 20,  # Reduced from 35
             'min_child_weight': 0.001,
             'learning_rate': 0.03,  # Increased from 0.02
-            'n_estimators': 2500,  # Increased from 2000
+            'n_estimators': 1500,  # Reduced from 2500 for faster training
             'subsample': 0.85,  # Increased from 0.8
             'subsample_freq': 1,
             'colsample_bytree': 0.85,  # Increased from 0.8
@@ -128,7 +128,7 @@ class Config:
             'min_child_samples': 25,  # Reduced from 28
             'min_child_weight': 0.001,
             'learning_rate': 0.03,  # Increased from 0.025
-            'n_estimators': 2500,  # Increased from 2000
+            'n_estimators': 1500,  # Reduced from 2500 for faster training
             'subsample': 0.9,  # Increased from 0.85
             'subsample_freq': 1,
             'colsample_bytree': 0.9,

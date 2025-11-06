@@ -1,6 +1,5 @@
 # train.py
 # Model training script with cross-validation and calibration
-# Current:  0.13197
 
 import sys
 import logging
@@ -177,7 +176,7 @@ def select_features(X, y, params, threshold=0.90):
     selected = feat_imp[feat_imp['cumulative'] <= threshold]['feature'].tolist()
     
     # Ensure minimum features with dynamic adjustment
-    min_features = max(35, int(len(feature_names) * 0.45))
+    min_features = max(25, int(len(feature_names) * 0.3))  # Reduced from 35 and 0.45
     if len(selected) < min_features:
         selected = feat_imp.head(min_features)['feature'].tolist()
     

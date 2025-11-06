@@ -142,9 +142,6 @@ class FeatureEngineer:
             feats["Age_bin_30s"] = ((age_num >= 30) & (age_num < 40)).astype(float)
             feats["Age_bin_40s"] = ((age_num >= 40) & (age_num < 50)).astype(float)
             feats["Age_bin_50plus"] = (age_num >= 50).astype(float)
-            # Age squared for non-linear patterns
-            feats["Age_squared"] = self._safe_power(age_num, 2)
-            feats["Age_log"] = self._safe_log(age_num)
         
         # Year-Month index and temporal patterns
         if self._has(feats, ["Year", "Month"]):
