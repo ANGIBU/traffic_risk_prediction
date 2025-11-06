@@ -68,7 +68,7 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.93
+            'correlation_threshold': 0.95  # Relaxed from 0.93
         }
         
         # Training settings
@@ -78,66 +78,71 @@ class Config:
             'stratified': True,
             'verbose_eval': 50,
             'early_stopping_rounds': 50,
-            'early_stopping_rounds_b': 100,
+            'early_stopping_rounds_b': 80,  # Reduced from 100
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.90,
-            'feature_selection_threshold_b': 0.88,
+            'feature_selection_threshold': 0.92,  # Relaxed from 0.90
+            'feature_selection_threshold_b': 0.90,  # Relaxed from 0.88
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': False,
-            'ensemble_top_k': 3,
-            'use_smote_b': False,
-            'smote_sampling_strategy': 0.15
+            'use_ensemble': True,  # Enable ensemble
+            'ensemble_top_k': 3,  # Use top 3 models
+            'use_smote_b': True,  # Enable SMOTE for Type B
+            'smote_sampling_strategy': 0.2,  # Increased from 0.15
+            'smote_k_neighbors': 7  # Added k_neighbors parameter
         }
         
-        # LightGBM hyperparameters for Type A - Experiment #8 Recovery
+        # LightGBM hyperparameters for Type A - Optimized
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 19,
-            'max_depth': 6,
-            'min_child_samples': 35,
+            'num_leaves': 45,  # Increased from 19
+            'max_depth': -1,  # Unlimited depth
+            'min_child_samples': 20,  # Reduced from 35
             'min_child_weight': 0.001,
-            'learning_rate': 0.02,
-            'n_estimators': 2000,
-            'subsample': 0.8,
+            'learning_rate': 0.03,  # Increased from 0.02
+            'n_estimators': 2500,  # Increased from 2000
+            'subsample': 0.85,  # Increased from 0.8
             'subsample_freq': 1,
-            'colsample_bytree': 0.8,
-            'scale_pos_weight': 8.0,
+            'colsample_bytree': 0.85,  # Increased from 0.8
+            'scale_pos_weight': 6.0,  # Reduced from 8.0
             'is_unbalance': False,
-            'reg_alpha': 1.2,
-            'reg_lambda': 1.2,
-            'min_split_gain': 0.02,
+            'reg_alpha': 0.5,  # Reduced from 1.2
+            'reg_lambda': 0.5,  # Reduced from 1.2
+            'min_split_gain': 0.01,  # Reduced from 0.02
             'n_jobs': 3,
             'verbose': -1,
             'random_state': 42,
-            'importance_type': 'gain'
+            'importance_type': 'gain',
+            'feature_fraction_seed': 42,
+            'bagging_seed': 42
         }
         
-        # LightGBM hyperparameters for Type B - Experiment #8 with SMOTE
+        # LightGBM hyperparameters for Type B - Optimized with SMOTE
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 28,
-            'max_depth': 8,
-            'min_child_samples': 28,
+            'num_leaves': 40,  # Increased from 28
+            'max_depth': -1,  # Unlimited depth
+            'min_child_samples': 25,  # Reduced from 28
             'min_child_weight': 0.001,
-            'learning_rate': 0.025,
-            'n_estimators': 2000,
-            'subsample': 0.85,
+            'learning_rate': 0.03,  # Increased from 0.025
+            'n_estimators': 2500,  # Increased from 2000
+            'subsample': 0.9,  # Increased from 0.85
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 12.0,
+            'scale_pos_weight': 8.0,  # Reduced from 12.0
             'is_unbalance': False,
-            'reg_alpha': 0.8,
-            'reg_lambda': 0.8,
-            'min_split_gain': 0.01,
+            'reg_alpha': 0.4,  # Reduced from 0.8
+            'reg_lambda': 0.4,  # Reduced from 0.8
+            'min_split_gain': 0.008,  # Reduced from 0.01
             'n_jobs': 3,
             'verbose': -1,
             'random_state': 42,
-            'importance_type': 'gain'
+            'importance_type': 'gain',
+            'feature_fraction_seed': 42,
+            'bagging_seed': 42
         }
         
         # Logging
