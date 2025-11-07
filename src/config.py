@@ -8,7 +8,6 @@ import os
 class Config:
     """
     Central configuration management for both inference and training.
-    
     Manages paths, hyperparameters, and settings with validation.
     """
     
@@ -50,7 +49,7 @@ class Config:
         
         # Inference parameters
         self.inference = {
-            'batch_size': 30000,  # Doubled for faster processing
+            'batch_size': 30000,
             'num_threads': 3,
             'use_progress': False
         }
@@ -68,7 +67,7 @@ class Config:
             'use_interaction': True,
             'use_nonlinear': True,
             'remove_correlated': True,
-            'correlation_threshold': 0.95  # Relaxed from 0.93
+            'correlation_threshold': 0.95
         }
         
         # Training settings
@@ -77,39 +76,39 @@ class Config:
             'random_state': 42,
             'stratified': True,
             'verbose_eval': 50,
-            'early_stopping_rounds': 30,  # Reduced for faster training
-            'early_stopping_rounds_b': 50,  # Reduced from 80
+            'early_stopping_rounds': 30,
+            'early_stopping_rounds_b': 50,
             'use_feature_selection': True,
-            'feature_selection_threshold': 0.85,  # More aggressive selection
-            'feature_selection_threshold_b': 0.80,  # More aggressive selection
+            'feature_selection_threshold': 0.85,
+            'feature_selection_threshold_b': 0.80,
             'use_calibration': True,
             'remove_correlated_features': True,
-            'use_ensemble': True,  # Enable ensemble
-            'ensemble_top_k': 3,  # Use top 3 models
-            'use_smote_b': True,  # Enable SMOTE for Type B
-            'smote_sampling_strategy': 0.2,  # Increased from 0.15
-            'smote_k_neighbors': 7  # Added k_neighbors parameter
+            'use_ensemble': True,
+            'ensemble_top_k': 3,
+            'use_smote_b': True,
+            'smote_sampling_strategy': 0.2,
+            'smote_k_neighbors': 7
         }
         
-        # LightGBM hyperparameters for Type A - Optimized
+        # LightGBM hyperparameters for Type A
         self.lgbm_params_a = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 45,  # Increased from 19
-            'max_depth': -1,  # Unlimited depth
-            'min_child_samples': 20,  # Reduced from 35
+            'num_leaves': 45,
+            'max_depth': -1,
+            'min_child_samples': 20,
             'min_child_weight': 0.001,
-            'learning_rate': 0.03,  # Increased from 0.02
-            'n_estimators': 1500,  # Reduced from 2500 for faster training
-            'subsample': 0.85,  # Increased from 0.8
+            'learning_rate': 0.03,
+            'n_estimators': 1500,
+            'subsample': 0.85,
             'subsample_freq': 1,
-            'colsample_bytree': 0.85,  # Increased from 0.8
-            'scale_pos_weight': 6.0,  # Reduced from 8.0
+            'colsample_bytree': 0.85,
+            'scale_pos_weight': 6.0,
             'is_unbalance': False,
-            'reg_alpha': 0.5,  # Reduced from 1.2
-            'reg_lambda': 0.5,  # Reduced from 1.2
-            'min_split_gain': 0.01,  # Reduced from 0.02
+            'reg_alpha': 0.5,
+            'reg_lambda': 0.5,
+            'min_split_gain': 0.01,
             'n_jobs': 3,
             'verbose': -1,
             'random_state': 42,
@@ -118,25 +117,25 @@ class Config:
             'bagging_seed': 42
         }
         
-        # LightGBM hyperparameters for Type B - Optimized with SMOTE
+        # LightGBM hyperparameters for Type B
         self.lgbm_params_b = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'num_leaves': 40,  # Increased from 28
-            'max_depth': -1,  # Unlimited depth
-            'min_child_samples': 25,  # Reduced from 28
+            'num_leaves': 40,
+            'max_depth': -1,
+            'min_child_samples': 25,
             'min_child_weight': 0.001,
-            'learning_rate': 0.03,  # Increased from 0.025
-            'n_estimators': 1500,  # Reduced from 2500 for faster training
-            'subsample': 0.9,  # Increased from 0.85
+            'learning_rate': 0.03,
+            'n_estimators': 1500,
+            'subsample': 0.9,
             'subsample_freq': 1,
             'colsample_bytree': 0.9,
-            'scale_pos_weight': 8.0,  # Reduced from 12.0
+            'scale_pos_weight': 8.0,
             'is_unbalance': False,
-            'reg_alpha': 0.4,  # Reduced from 0.8
-            'reg_lambda': 0.4,  # Reduced from 0.8
-            'min_split_gain': 0.008,  # Reduced from 0.01
+            'reg_alpha': 0.4,
+            'reg_lambda': 0.4,
+            'min_split_gain': 0.008,
             'n_jobs': 3,
             'verbose': -1,
             'random_state': 42,
