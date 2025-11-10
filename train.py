@@ -231,11 +231,14 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
-    use_smote = config.training.get('use_smote_b', True) and test_type == 'B'
+    use_smote = config.training.get('use_smote_b', False) and test_type == 'B'
     if use_smote:
         smote_strategy = config.training.get('smote_sampling_strategy', 0.15)
         smote_k_neighbors = config.training.get('smote_k_neighbors', 5)
         logger.info(f"SMOTE enabled for Type B (sampling_strategy={smote_strategy}, k_neighbors={smote_k_neighbors})")
+    else:
+        if test_type == 'B':
+            logger.info("SMOTE disabled for Type B - using original data only")
     
     cv_metrics = []
     oof_preds = np.zeros(len(X))
