@@ -140,7 +140,7 @@ def train_model(X_train, y_train, X_val, y_val, params, early_stopping_rounds=50
 
 def select_features(X, y, params, threshold=0.90):
     """
-    Select important features using feature importance with dynamic threshold.
+    Select important features using feature importance.
     
     Args:
         X: Feature matrix
@@ -172,15 +172,12 @@ def select_features(X, y, params, threshold=0.90):
     
     feat_imp['cumulative'] = feat_imp['importance'].cumsum() / feat_imp['importance'].sum()
     
-    # Dynamic selection based on importance distribution
     selected = feat_imp[feat_imp['cumulative'] <= threshold]['feature'].tolist()
     
-    # Ensure minimum features with dynamic adjustment
-    min_features = max(25, int(len(feature_names) * 0.3))  # Reduced from 35 and 0.45
+    min_features = max(25, int(len(feature_names) * 0.3))
     if len(selected) < min_features:
         selected = feat_imp.head(min_features)['feature'].tolist()
     
-    # Add features with high individual importance
     high_importance_features = feat_imp[feat_imp['importance'] > feat_imp['importance'].mean() * 0.5]['feature'].tolist()
     selected = list(set(selected + high_importance_features))
     
@@ -191,7 +188,7 @@ def select_features(X, y, params, threshold=0.90):
 
 def cross_validate(X, y, params, config, test_type='A'):
     """
-    Perform stratified k-fold cross-validation with ensemble capability.
+    Perform stratified k-fold cross-validation.
     
     Args:
         X: Features
@@ -201,7 +198,7 @@ def cross_validate(X, y, params, config, test_type='A'):
         test_type: 'A' or 'B'
         
     Returns:
-        tuple: (best_model or ensemble_models, cv_scores, oof_predictions, selected_features, calibrator)
+        tuple: (best_model, cv_scores, oof_predictions, selected_features, calibrator)
     """
     n_splits = config.training['n_splits']
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
@@ -209,14 +206,12 @@ def cross_validate(X, y, params, config, test_type='A'):
     logger = logging.getLogger(__name__)
     logger.info(f"Starting {n_splits}-fold CV for type {test_type}")
     
-    # Remove correlated features first
     if config.training['remove_correlated_features']:
         corr_threshold = config.feature_engineering['correlation_threshold']
         keep_features = remove_correlated_features(X, threshold=corr_threshold)
         X = X[keep_features]
         logger.info(f"After correlation removal: {len(X.columns)} features")
     
-    # Feature selection with type-specific threshold
     if config.training['use_feature_selection']:
         if test_type == 'B':
             threshold = config.training.get('feature_selection_threshold_b', 0.90)
@@ -229,7 +224,6 @@ def cross_validate(X, y, params, config, test_type='A'):
     else:
         selected_features = X.columns.tolist()
     
-    # Early stopping rounds based on test type
     if test_type == 'B':
         early_stopping_rounds = config.training.get('early_stopping_rounds_b', 80)
     else:
@@ -237,11 +231,10 @@ def cross_validate(X, y, params, config, test_type='A'):
     
     logger.info(f"Using early_stopping_rounds={early_stopping_rounds} for type {test_type}")
     
-    # SMOTE configuration for Type B
     use_smote = config.training.get('use_smote_b', True) and test_type == 'B'
     if use_smote:
-        smote_strategy = config.training.get('smote_sampling_strategy', 0.2)
-        smote_k_neighbors = config.training.get('smote_k_neighbors', 7)
+        smote_strategy = config.training.get('smote_sampling_strategy', 0.15)
+        smote_k_neighbors = config.training.get('smote_k_neighbors', 5)
         logger.info(f"SMOTE enabled for Type B (sampling_strategy={smote_strategy}, k_neighbors={smote_k_neighbors})")
     
     cv_metrics = []
@@ -257,11 +250,9 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Train: {len(X_train)}, Val: {len(X_val)}")
         logger.info(f"Train pos rate: {y_train.mean():.4f}, Val pos rate: {y_val.mean():.4f}")
         
-        # Apply SMOTE for Type B with dynamic adjustment
         if use_smote:
             logger.info(f"Applying SMOTE to training data...")
             
-            # Dynamic k_neighbors based on minority class size
             minority_count = y_train.sum()
             k_neighbors = min(smote_k_neighbors, int(minority_count * 0.5))
             k_neighbors = max(3, k_neighbors)
@@ -309,15 +300,12 @@ def cross_validate(X, y, params, config, test_type='A'):
         std = metrics_df[metric].std()
         logger.info(f"CV {metric.upper()}: {mean:.6f} +/- {std:.6f}")
     
-    # Ensemble strategy: Use top-k models or best single model
     use_ensemble = config.training.get('use_ensemble', True)
     
     if use_ensemble and len(models) > 1:
-        # Sort models by combined score
         model_scores = [(i, m['combined']) for i, m in enumerate(cv_metrics)]
         model_scores.sort(key=lambda x: x[1])
         
-        # Select top-k models
         ensemble_top_k = config.training.get('ensemble_top_k', 3)
         top_k = min(ensemble_top_k, len(models))
         top_model_indices = [idx for idx, _ in model_scores[:top_k]]
@@ -326,10 +314,8 @@ def cross_validate(X, y, params, config, test_type='A'):
         logger.info(f"Model indices: {top_model_indices}")
         logger.info(f"Model scores: {[cv_metrics[i]['combined'] for i in top_model_indices]}")
         
-        # Store ensemble models
         ensemble_models = [models[i] for i in top_model_indices]
         
-        # Recalculate OOF predictions for ensemble
         oof_ensemble = np.zeros(len(X))
         for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
             X_val = X.iloc[val_idx]
@@ -345,18 +331,15 @@ def cross_validate(X, y, params, config, test_type='A'):
                    f"ECE: {ensemble_metrics['ece']:.6f}, "
                    f"Combined: {ensemble_metrics['combined']:.6f}")
         
-        # Use ensemble predictions for calibration
         oof_for_calibration = oof_ensemble
         final_model = ensemble_models
     else:
-        # Use best single model
         best_fold_idx = np.argmin([m['combined'] for m in cv_metrics])
         final_model = models[best_fold_idx]
         logger.info(f"Best single model from fold {best_fold_idx + 1} "
                    f"(Combined: {cv_metrics[best_fold_idx]['combined']:.6f})")
         oof_for_calibration = oof_preds
     
-    # Calibrator
     calibrator = None
     if config.training['use_calibration']:
         logger.info("Training probability calibrator...")
@@ -489,7 +472,6 @@ def main():
             test_type='A'
         )
         
-        # Save model
         model_path_a = config.paths['model']
         joblib.dump(model_a, model_path_a)
         logger.info(f"Model A saved to {model_path_a}")
@@ -504,7 +486,7 @@ def main():
         logger.info(f"Feature names A saved to {feature_names_path_a}")
         
         logger.info("="*60)
-        logger.info("STEP 5: Training Type B model with SMOTE")
+        logger.info("STEP 5: Training Type B model")
         logger.info("="*60)
         
         X_b = prepare_features(featured_b, 'B')
@@ -519,7 +501,6 @@ def main():
             test_type='B'
         )
         
-        # Save model
         model_path_b = config.paths['model_b']
         joblib.dump(model_b, model_path_b)
         logger.info(f"Model B saved to {model_path_b}")
@@ -549,9 +530,7 @@ def main():
         logger.info(f"Total training time: {total_time:.1f}s ({total_time/60:.1f}min)")
         logger.info("="*60)
         
-        # Feature importance logging
         if isinstance(model_a, list):
-            # Ensemble model - average importance
             importance_a = np.mean([m.feature_importance(importance_type='gain') for m in model_a], axis=0)
         else:
             importance_a = model_a.feature_importance(importance_type='gain')
@@ -562,7 +541,6 @@ def main():
         }).sort_values('importance', ascending=False)
         
         if isinstance(model_b, list):
-            # Ensemble model - average importance
             importance_b = np.mean([m.feature_importance(importance_type='gain') for m in model_b], axis=0)
         else:
             importance_b = model_b.feature_importance(importance_type='gain')
